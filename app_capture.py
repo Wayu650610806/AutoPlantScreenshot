@@ -11,15 +11,30 @@ import time
 import numpy as np
 import cv2
 import json
+import easyocr # For OCR
+import shutil # For deleting folders
 
 # --- SIFT Global Initialization ---
 try:
     sift = cv2.SIFT_create()
-    sift_template_cache = {}
+    tabname_sift_cache = {}
+    status_sift_caches = {}
     SIFT_MATCH_THRESHOLD = 70
 except Exception as e:
     messagebox.showerror("OpenCV Error", f"ไม่สามารถเริ่ม SIFT ได้ (อาจต้องติดตั้ง opencv-contrib-python)\n{e}")
     sys.exit()
+
+# --- EasyOCR Initialization ---
+try:
+    print("Loading EasyOCR Reader... (This may take a moment on first run)")
+    ocr_reader = easyocr.Reader(['en']) 
+    print("EasyOCR Reader loaded.")
+except Exception as e:
+    messagebox.showerror("EasyOCR Error", f"Could not initialize EasyOCR.\n{e}")
+    sys.exit()
+
+# (MODIFIED) เพิ่มจุดทศนิยม
+OCR_ALLOWLIST = '-.0123456789'
 
 # --- Base Path Logic ---
 def get_base_path():
@@ -32,8 +47,10 @@ def get_base_path():
 # --- Global Paths & Constants ---
 BASE_PATH = get_base_path()
 TABNAME_DIR = os.path.join(BASE_PATH, "pictures", "tabname") 
-os.makedirs(TABNAME_DIR, exist_ok=True)
+STATUS_TEMPLATE_DIR = os.path.join(BASE_PATH, "pictures", "status")
 ROI_DIR = os.path.join(BASE_PATH, "rois")
+os.makedirs(TABNAME_DIR, exist_ok=True)
+os.makedirs(STATUS_TEMPLATE_DIR, exist_ok=True)
 os.makedirs(ROI_DIR, exist_ok=True)
 
 # --- Predefined ROI Names ---
@@ -81,10 +98,11 @@ SPLIT_ORDER = ["NONE", "P1_34_34_16_16", "P2_25x4", "P3_25_25_50", "P4_50_50"]
 
 # --- Language Data (คลังคำศัพท์) ---
 translations = {
-    'app_title': {'en': 'Capture Tool v0.10 (File Match)', 'ja': 'キャプチャーツール v0.10 (ファイル一致)'}, # (MODIFIED)
+    'app_title': {'en': 'Capture Tool v0.13 (Raw OCR)', 'ja': 'キャプチャーツール v0.13 (生OCR)'}, # (MODIFIED)
     'tab_capture': {'en': 'Auto-Capture', 'ja': '自動キャプチャ'},
     'tab_gallery': {'en': 'Tabname', 'ja': 'タブ名'}, 
     'tab_roi_sets': {'en': 'ROI Sets', 'ja': 'ROIセット'},
+    'tab_status': {'en': 'Status Templates', 'ja': 'ステータス・テンプレート'},
     'interval_label': {'en': 'Interval (sec):', 'ja': '間隔 (秒):'},
     'start_button': {'en': 'Start Auto', 'ja': '自動開始'},
     'stop_button': {'en': 'Stop Auto', 'ja': '自動停止'},
@@ -92,13 +110,13 @@ translations = {
     'image_placeholder': {'en': 'Captured crops will appear here\n(Press "Start" to begin)', 'ja': 'キャプチャした画像はここに表示されます\n(「開始」を押してください)'},
     'split_method_label': {'en': 'Split Method:', 'ja': '分割方法:'},
     'capture_region_button': {'en': 'Capture Tabname', 'ja': 'タブ名キャプチャ'},
-    # 'active_roi_set_label': DELETED
     'gallery_preview_header': {'en': 'Preview', 'ja': 'プレビュー'},
     'gallery_refresh_button': {'en': 'Refresh', 'ja': '更新'},
     'gallery_rename_button': {'en': 'Rename', 'ja': '名前変更'},
     'gallery_delete_button': {'en': 'Delete', 'ja': '削除'},
     'gallery_placeholder': {'en': 'Select an image to preview', 'ja': '画像を選択してください'},
     'create_roi_set_button': {'en': 'Create New ROI Set', 'ja': 'ROIセット新規作成'},
+    'add_to_roi_set_button': {'en': 'Add to Selected Set', 'ja': '選択中セットに追加'},
     'roi_set_list_header': {'en': 'ROI Set Files', 'ja': 'ROIセットファイル'},
     'roi_save_as_title': {'en': 'Save ROI Set As', 'ja': 'ROIセットを名前を付けて保存'},
     'roi_save_as_text': {'en': 'Enter a filename for this new ROI set (e.g., "machine_A.json"):', 'ja': 'このROIセットのファイル名を入力してください (例: "machine_A.json"):'},
@@ -106,10 +124,23 @@ translations = {
     'roi_add_another_text': {'en': 'ROI "{content}" added to set. Add another one?', 'ja': 'ROI「{content}」をセットに追加しました。続けて追加しますか？'},
     'roi_name_prompt_title': {'en': 'Enter ROI Name', 'ja': 'ROI名入力'},
     'roi_name_prompt_text': {'en': 'Select or type a name for this ROI:', 'ja': 'このROIの名前を選択または入力してください:'},
+    'select_roi_set_prompt': {'en': 'Please select an ROI set file first.', 'ja': 'まずROIセットファイルを選択してください。'},
+    'status_folder_header': {'en': 'Tabname Folders', 'ja': 'タブ名フォルダ'},
+    'status_image_header': {'en': 'Status Images', 'ja': 'ステータス画像'},
+    'create_folder_button': {'en': 'Create Folder', 'ja': 'フォルダ作成'},
+    'rename_folder_button': {'en': 'Rename Folder', 'ja': 'フォルダ名変更'},
+    'delete_folder_button': {'en': 'Delete Folder', 'ja': 'フォルダ削除'},
+    'add_image_button': {'en': 'Add Status Image...', 'ja': 'ステータス画像追加...'},
+    'rename_image_button': {'en': 'Rename Image', 'ja': '画像名変更'},
+    'delete_image_button': {'en': 'Delete Image', 'ja': '画像削除'},
+    'add_image_prompt_title': {'en': 'Enter Status Name', 'ja': 'ステータス名入力'},
+    'add_image_prompt_text': {'en': 'Enter name for this status (e.g., "Cooling"):', 'ja': 'このステータスの名前を入力してください (例: "Cooling"):'},
+    'select_folder_prompt': {'en': 'Please select a folder first.', 'ja': 'まずフォルダを選択してください。'},
     'rename_prompt_title': {'en': 'Rename File', 'ja': '名前の変更'},
     'rename_prompt_text': {'en': 'Enter new filename:', 'ja': '新しいファイル名を入力:'},
     'delete_confirm_title': {'en': 'Confirm Delete', 'ja': '削除の確認'},
     'delete_confirm_text': {'en': 'Are you sure you want to delete this file?\n{content}', 'ja': 'このファイルを削除してもよろしいですか？\n{content}'},
+    'delete_folder_confirm_text': {'en': 'Are you sure you want to PERMANENTLY delete this folder and ALL images inside it?\n{content}', 'ja': 'このフォルダと中の画像をすべて完全に削除してもよろしいですか？\n{content}'},
     'status_idle': {'en': 'Status: Idle', 'ja': 'ステータス: 待機中'},
     'status_running': {'en': 'Auto-Capture running... (every {content} sec)', 'ja': '自動キャプチャ実行中... ({content} 秒ごと)'},
     'status_stopped': {'en': 'Status: Stopped', 'ja': 'ステータス: 停止'},
@@ -117,9 +148,8 @@ translations = {
     'status_error': {'en': 'Error: {content}', 'ja': 'エラー: {content}'},
     'status_saved': {'en': 'Image saved to gallery: {content}', 'ja': 'ギャラリーに画像を保存しました: {content}'},
     'status_sift_loading': {'en': 'Loading SIFT templates...', 'ja': 'SIFTテンプレートを読込中...'},
-    'status_sift_done': {'en': 'SIFT templates loaded ({content} images).', 'ja': 'SIFTテンプレートを読込完了 ({content} 画像).'},
+    'status_sift_done': {'en': 'SIFT templates loaded ({content[0]} tabnames, {content[1]} statuses).', 'ja': 'SIFTテンプレートを読込完了 (タブ名{content[0]}件、ステータス{content[1]}件)。'},
     'status_roi_saved': {'en': 'ROI Set "{content}" saved.', 'ja': 'ROIセット「{content}」を保存しました。'},
-    # 'status_roi_loaded': DELETED
     'status_roi_error': {'en': 'Failed to load/save ROI data.', 'ja': 'ROIデータの読み込み/保存に失敗しました。'},
     'error_title': {'en': 'Invalid Input', 'ja': '無効な入力'},
     'error_message': {'en': 'Please enter a valid number (seconds > 1).\n{content}', 'ja': '有効な数字（1秒以上）を入力してください。\n{content}'},
@@ -144,9 +174,21 @@ capture_region_button = None
 notebook = None
 roi_set_list = None
 create_roi_set_button = None
+add_to_roi_set_button = None
 roi_rename_button = None
 roi_delete_button = None
 roi_refresh_button = None
+status_tab = None
+status_folder_list = None
+status_image_list = None
+status_preview_photo = None
+status_preview_label = None
+status_add_image_button = None
+status_rename_image_button = None
+status_delete_image_button = None
+status_create_folder_button = None
+status_rename_folder_button = None
+status_delete_folder_button = None
 
 # --- Custom Dialog for ROI Naming ---
 class AskROINameDialog(simpledialog.Dialog):
@@ -162,8 +204,6 @@ class AskROINameDialog(simpledialog.Dialog):
     def apply(self):
         self.result = self.combo.get()
 
-# --- (DELETED) load_active_roi_file ---
-
 def set_language(lang_code):
     global current_lang, image_placeholder_label
     current_lang = lang_code
@@ -172,6 +212,7 @@ def set_language(lang_code):
     notebook.tab(capture_tab, text=translations['tab_capture'][current_lang])
     notebook.tab(gallery_tab, text=translations['tab_gallery'][current_lang])
     notebook.tab(roi_tab, text=translations['tab_roi_sets'][current_lang])
+    notebook.tab(status_tab, text=translations['tab_status'][current_lang])
     
     # Capture Tab
     interval_label.config(text=translations['interval_label'][current_lang])
@@ -181,7 +222,6 @@ def set_language(lang_code):
     progress_label.config(text=translations['progress_label'][current_lang])
     split_method_label.config(text=translations['split_method_label'][current_lang])
     capture_region_button.config(text=translations['capture_region_button'][current_lang])
-    # (DELETED) active_roi_set_label
     
     current_index = split_method_combo.current()
     if current_index == -1: current_index = 0
@@ -201,10 +241,21 @@ def set_language(lang_code):
     # ROI Set Tab
     roi_set_list.heading("#0", text=translations['roi_set_list_header'][current_lang])
     create_roi_set_button.config(text=translations['create_roi_set_button'][current_lang])
+    add_to_roi_set_button.config(text=translations['add_to_roi_set_button'][current_lang])
     roi_rename_button.config(text=translations['gallery_rename_button'][current_lang])
     roi_delete_button.config(text=translations['gallery_delete_button'][current_lang])
     roi_refresh_button.config(text=translations['gallery_refresh_button'][current_lang])
         
+    # Status Tab
+    status_folder_list.heading("#0", text=translations['status_folder_header'][current_lang])
+    status_image_list.heading("#0", text=translations['status_image_header'][current_lang])
+    status_create_folder_button.config(text=translations['create_folder_button'][current_lang])
+    status_rename_folder_button.config(text=translations['rename_folder_button'][current_lang])
+    status_delete_folder_button.config(text=translations['delete_folder_button'][current_lang])
+    status_add_image_button.config(text=translations['add_image_button'][current_lang])
+    status_rename_image_button.config(text=translations['rename_image_button'][current_lang])
+    status_delete_image_button.config(text=translations['delete_image_button'][current_lang])
+
     if not is_running:
         status_label.config(text=translations['status_idle'][current_lang])
         if image_placeholder_label:
@@ -217,38 +268,62 @@ def toggle_language():
     if current_lang == 'en': set_language('ja')
     else: set_language('en')
 
-# --- SIFT Matching Logic ---
+# --- SIFT & OCR Processing Logic ---
 def pil_to_cv2_gray(pil_image):
     return cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2GRAY)
 
-def load_sift_templates():
-    global sift_template_cache
-    sift_template_cache.clear()
+def _load_sift_from_file(filepath):
+    try:
+        img_bytes = np.fromfile(filepath, dtype=np.uint8)
+        img = cv2.imdecode(img_bytes, cv2.IMREAD_GRAYSCALE)
+        if img is None: return (None, None)
+        kp, des = sift.detectAndCompute(img, None)
+        if des is not None and len(kp) > 0:
+            return (kp, des)
+    except Exception as e:
+        print(f"Error loading SIFT from {filepath}: {e}")
+    return (None, None)
+
+def load_all_sift_templates():
+    """Loads BOTH Tabname and Status templates."""
+    global tabname_sift_cache, status_sift_caches
+    tabname_sift_cache.clear()
+    status_sift_caches.clear()
     update_status('status_sift_loading')
     root.update_idletasks()
-    count = 0
+    tabname_count = 0
+    status_count = 0
     try:
         for filename in os.listdir(TABNAME_DIR):
             if filename.endswith('.png'):
                 filepath = os.path.join(TABNAME_DIR, filename)
-                img_bytes = np.fromfile(filepath, dtype=np.uint8)
-                img = cv2.imdecode(img_bytes, cv2.IMREAD_GRAYSCALE)
-                if img is None: continue
-                kp, des = sift.detectAndCompute(img, None)
-                if des is not None and len(kp) > 0:
-                    sift_template_cache[filename] = (kp, des)
-                    count += 1
-        update_status('status_sift_done', count)
+                kp, des = _load_sift_from_file(filepath)
+                if kp:
+                    tabname_sift_cache[filename] = (kp, des)
+                    tabname_count += 1
     except Exception as e:
-        update_status('status_error', f"SIFT template load failed: {e}")
-
-def find_best_match(cropped_pil_image):
-    if not sift_template_cache: return "None"
+        update_status('status_error', f"Tabname SIFT load failed: {e}")
     try:
-        w, h = cropped_pil_image.size
-        top_half_box = (0, 0, w, h // 2)
-        image_to_check = cropped_pil_image.crop(top_half_box)
-        img_crop_gray = pil_to_cv2_gray(image_to_check)
+        for tabname_folder in os.listdir(STATUS_TEMPLATE_DIR):
+            tabname_key = tabname_folder + ".png"
+            sub_folder_path = os.path.join(STATUS_TEMPLATE_DIR, tabname_folder)
+            if os.path.isdir(sub_folder_path):
+                status_sift_caches[tabname_key] = {}
+                for status_filename in os.listdir(sub_folder_path):
+                    if status_filename.endswith('.png'):
+                        filepath = os.path.join(sub_folder_path, status_filename)
+                        kp, des = _load_sift_from_file(filepath)
+                        if kp:
+                            status_sift_caches[tabname_key][status_filename] = (kp, des)
+                            status_count += 1
+        update_status('status_sift_done', (tabname_count, status_count))
+    except Exception as e:
+        update_status('status_error', f"Status SIFT load failed: {e}")
+
+def _find_best_sift_match(image_to_check_pil, template_cache):
+    if not template_cache: return "None"
+    try:
+        img_crop_gray = pil_to_cv2_gray(image_to_check_pil)
         kp_crop, des_crop = sift.detectAndCompute(img_crop_gray, None)
         if des_crop is None or len(kp_crop) < SIFT_MATCH_THRESHOLD:
             return "None"
@@ -258,8 +333,9 @@ def find_best_match(cropped_pil_image):
         flann = cv2.FlannBasedMatcher(index_params, search_params)
         best_match_name = "None"
         max_good_matches = 0
-        for filename, (kp_template, des_template) in sift_template_cache.items():
+        for filename, (kp_template, des_template) in template_cache.items():
             if des_template is None: continue
+            if len(kp_crop) < 2 or len(kp_template) < 2: continue
             matches = flann.knnMatch(des_crop, des_template, k=2)
             good_matches = [m for m, n in matches if m.distance < 0.7 * n.distance]
             if len(good_matches) > SIFT_MATCH_THRESHOLD and len(good_matches) > max_good_matches:
@@ -269,6 +345,20 @@ def find_best_match(cropped_pil_image):
     except Exception as e:
         print(f"SIFT match error: {e}")
         return "None"
+
+def find_best_tabname_match(cropped_pil_image):
+    w, h = cropped_pil_image.size
+    top_half_box = (0, 0, w, h // 2)
+    image_to_check = cropped_pil_image.crop(top_half_box)
+    return _find_best_sift_match(image_to_check, tabname_sift_cache)
+
+def find_best_status_match(roi_crop_pil, tabname_match_key):
+    if tabname_match_key not in status_sift_caches:
+        return "None"
+    status_cache_for_this_tab = status_sift_caches[tabname_match_key]
+    return _find_best_sift_match(roi_crop_pil, status_cache_for_this_tab)
+
+# --- (DELETED) preprocess_for_ocr function was here ---
 
 # --- Auto-Capture Logic ---
 def start_capture():
@@ -288,7 +378,6 @@ def start_capture():
     lang_button.config(state=tk.DISABLED)
     split_method_combo.config(state=tk.DISABLED)
     capture_region_button.config(state=tk.DISABLED)
-    # (DELETED) active_roi_combo
     perform_capture_task() 
     update_countdown(0, interval)
 
@@ -304,7 +393,6 @@ def stop_capture():
     lang_button.config(state=tk.NORMAL)
     split_method_combo.config(state=tk.NORMAL)
     capture_region_button.config(state=tk.NORMAL)
-    # (DELETED) active_roi_combo
     progress_bar['value'] = 0
     update_status('status_stopped')
     clear_image_display() 
@@ -322,31 +410,86 @@ def update_countdown(current_step, interval):
         timer_job_id = root.after(100, update_countdown, 0, interval) 
 
 def perform_capture_task():
-    """(MODIFIED v0.10) ส่ง (ภาพ, ชื่อ, offset)"""
     try:
         image = ImageGrab.grab()
         selected_index = split_method_combo.current()
         method_key = SPLIT_ORDER[selected_index]
         split_function = SPLIT_OPTIONS[method_key]['func']
-        
-        sift_results = []
-        
+        final_results = []
         if split_function:
-            boxes = split_function(image) # This returns (x, y, w, h)
+            boxes = split_function(image)
             for (x, y, w, h) in boxes:
-                box_pil = (x, y, x + w, y + h)
-                crop_pil = image.crop(box_pil)
-                match_name = find_best_match(crop_pil)
-                sift_results.append((crop_pil, match_name, (x, y))) 
+                box_pil_coords = (x, y, x + w, y + h)
+                crop_pil = image.crop(box_pil_coords)
+                match_name = find_best_tabname_match(crop_pil)
+                data_results = {}
+                if match_name != "None":
+                    data_results = extract_data_from_rois(crop_pil, match_name, (x, y))
+                final_results.append((crop_pil, match_name, (x, y), data_results))
         else:
             crop_pil = image
-            match_name = find_best_match(crop_pil)
-            sift_results.append((crop_pil, match_name, (0, 0))) 
-
-        root.after(0, update_gui_with_sift_results, sift_results)
-        
+            match_name = find_best_tabname_match(crop_pil)
+            data_results = {}
+            if match_name != "None":
+                data_results = extract_data_from_rois(crop_pil, match_name, (0, 0))
+            final_results.append((crop_pil, match_name, (0, 0), data_results))
+        root.after(0, update_gui_with_sift_results, final_results)
     except Exception as e:
         root.after(0, update_status, 'status_error', str(e))
+
+def extract_data_from_rois(pil_image, tabname_match, crop_offset):
+    """
+    (MODIFIED v0.13) SIFT for '運転状況', RAW OCR for ALL OTHERS.
+    """
+    data_results = {}
+    crop_offset_x, crop_offset_y = crop_offset
+    roi_filename = tabname_match.replace(".png", "") + ".json"
+    roi_filepath = os.path.join(ROI_DIR, roi_filename)
+    
+    if not os.path.exists(roi_filepath):
+        return {}
+    try:
+        with open(roi_filepath, 'r', encoding='utf-8') as f:
+            rois_to_draw = json.load(f)
+    except Exception as e:
+        print(f"Error loading ROI file {roi_filename}: {e}")
+        return {}
+        
+    for roi_key, [global_x, global_y, global_w, global_h] in rois_to_draw.items():
+        try:
+            local_x = global_x - crop_offset_x
+            local_y = global_y - crop_offset_y
+            roi_box_pil = (local_x, local_y, local_x + global_w, local_y + global_h)
+            
+            img_w, img_h = pil_image.size
+            if local_x > img_w or local_y > img_h: continue
+
+            roi_crop_pil = pil_image.crop(roi_box_pil)
+
+            # --- (MODIFIED LOGIC v0.13) ---
+            if "運転状況" in roi_key:
+                # 1. SIFT Task
+                status_match = find_best_status_match(roi_crop_pil, tabname_match)
+                data_results[roi_key] = status_match.replace(".png", "")
+            else:
+                # 2. OCR Task (Raw, no preprocessing)
+                
+                # (NEW) Convert PIL to CV2/Numpy array (what easyocr expects)
+                roi_cv_image = cv2.cvtColor(np.array(roi_crop_pil), cv2.COLOR_RGB2BGR)
+
+                ocr_results = ocr_reader.readtext(roi_cv_image, allowlist=OCR_ALLOWLIST, detail=0)
+                extracted_text = "".join(ocr_results).strip()
+                
+                if not extracted_text:
+                    data_results[roi_key] = "N/A"
+                else:
+                    data_results[roi_key] = extracted_text
+            # --- (END MODIFIED LOGIC) ---
+            
+        except Exception as e:
+            print(f"Error processing ROI {roi_key}: {e}")
+            data_results[roi_key] = "Error"
+    return data_results
 
 def clear_image_display():
     global image_placeholder_label, auto_cap_photos
@@ -357,9 +500,7 @@ def clear_image_display():
     image_placeholder_label.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
 def update_gui_with_sift_results(sift_results):
-    """
-    (REPLACED v0.10) วาด ROI ทั้งหมดจากไฟล์ JSON ที่ชื่อตรงกับ SIFT Match
-    """
+    """(MODIFIED v0.12) Draws boxes, but puts text in labels below."""
     global auto_cap_photos, image_placeholder_label
     
     auto_cap_photos.clear()
@@ -375,56 +516,58 @@ def update_gui_with_sift_results(sift_results):
     container_height = crop_display_frame.winfo_height()
     if container_width <= 1: container_width = 830
     if container_height <= 1: container_height = 450
+    
     max_img_width = (container_width // num_images) - (num_images * 4) 
-    max_img_height = container_height - 40
-
-    for (pil_image, match_name, (crop_offset_x, crop_offset_y)) in sift_results:
+    
+    for (pil_image, match_name, (crop_offset_x, crop_offset_y), data_results) in sift_results:
         result_frame = tk.Frame(crop_display_frame, background="#ffffff", relief=tk.SUNKEN, borderwidth=1)
         display_image = pil_image.copy()
         
-        # --- (NEW LOGIC v0.10) ---
-        match_name_no_ext = match_name.replace(".png", "")
-        roi_filename = match_name_no_ext + ".json"
-        roi_filepath = os.path.join(ROI_DIR, roi_filename)
-        
-        # 1. ตรวจสอบว่ามีไฟล์ ROI ที่ชื่อตรงกันหรือไม่
-        if os.path.exists(roi_filepath):
+        if match_name != "None":
             try:
-                # 2. โหลดไฟล์ ROI นั้น
-                with open(roi_filepath, 'r', encoding='utf-8') as f:
-                    rois_to_draw = json.load(f)
-                
-                # 3. แปลงเป็น CV2 (ครั้งเดียว)
                 cv_image = cv2.cvtColor(np.array(display_image), cv2.COLOR_RGB2BGR)
-
-                # 4. วนลูปวาด *ทุกกล่อง* ในไฟล์นั้น
-                for roi_key, [global_x, global_y, global_w, global_h] in rois_to_draw.items():
-                    # 5. แก้ไขพิกัด (บั๊กที่เราคุยกัน)
-                    local_x = global_x - crop_offset_x
-                    local_y = global_y - crop_offset_y
-                    
-                    # 6. วาดกล่อง
-                    cv2.rectangle(cv_image, (local_x, local_y), (local_x + global_w, local_y + global_h), (0, 255, 0), 2)
+                roi_filename = match_name.replace(".png", "") + ".json"
+                roi_filepath = os.path.join(ROI_DIR, roi_filename)
                 
-                # 7. แปลงกลับเป็น PIL
-                display_image = Image.fromarray(cv2.cvtColor(cv_image, cv2.COLOR_BGR2RGB))
-            
-            except Exception as e:
-                print(f"Error loading/drawing ROI file {roi_filename}: {e}")
-                # (ถ้าพลาด ก็ใช้ภาพเดิมต่อไป)
-        # --- (END NEW LOGIC) ---
+                if os.path.exists(roi_filepath):
+                    with open(roi_filepath, 'r', encoding='utf-8') as f:
+                        rois_to_draw = json.load(f)
+                    
+                    for roi_key, [global_x, global_y, global_w, global_h] in rois_to_draw.items():
+                        local_x = global_x - crop_offset_x
+                        local_y = global_y - crop_offset_y
+                        img_h, img_w = cv_image.shape[:2]
+                        if local_x > img_w or local_y > img_h or (local_x + global_w) < 0 or (local_y + global_h) < 0:
+                            continue
 
-        display_image.thumbnail((max_img_width, max_img_height), Image.Resampling.LANCZOS)
+                        cv2.rectangle(cv_image, (local_x, local_y), (local_x + global_w, local_y + global_h), (0, 255, 0), 2)
+                        
+                        # (DELETED) cv2.putText(...) line removed
+
+                display_image = Image.fromarray(cv2.cvtColor(cv_image, cv2.COLOR_BGR2RGB))
+            except Exception as e:
+                print(f"Error drawing ROI: {e}")
+
+        display_image.thumbnail((max_img_width, container_height - 100), Image.Resampling.LANCZOS)
         photo = ImageTk.PhotoImage(display_image)
         auto_cap_photos.append(photo)
+        
         image_label = tk.Label(result_frame, image=photo, background="#ffffff")
         image_label.image = photo 
         image_label.pack(side=tk.TOP, fill=tk.BOTH, expand=True, padx=2, pady=2)
 
         display_name = match_name.replace(".png", "")
         name_color = "green" if match_name != "None" else "red"
-        name_label = tk.Label(result_frame, text=display_name, font=(font_family, 10, 'bold'), background="#ffffff", foreground=name_color)
-        name_label.pack(side=tk.BOTTOM, fill=tk.X, pady=(0, 5))
+        name_label = tk.Label(result_frame, text=display_name, font=(font_family, 10, 'bold'), background="#ffffff", foreground=name_color, anchor=tk.W)
+        name_label.pack(side=tk.TOP, fill=tk.X, pady=(5,0), padx=5)
+        
+        data_text = "\n".join([f"{key}: {value}" for key, value in data_results.items()])
+        if not data_text:
+            data_text = " "
+            
+        data_label = tk.Label(result_frame, text=data_text, font=(font_family, 9, 'italic'), 
+                              background="#ffffff", foreground="black", justify=tk.LEFT, anchor=tk.NW)
+        data_label.pack(side=tk.TOP, fill=tk.X, pady=(0, 5), padx=5)
 
         result_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=2, pady=2)
 
@@ -487,9 +630,8 @@ def start_region_capture():
         except Exception as e:
             update_status('status_error', str(e))
 
-def start_roi_set_creation():
-    """Called by 'Create New ROI Set' button."""
-    new_rois = {}
+def _roi_creation_loop(roi_data_dict):
+    """Helper loop for creating/adding ROIs."""
     while True:
         root.withdraw()
         time.sleep(0.5)
@@ -509,17 +651,22 @@ def start_roi_set_creation():
             y = selector.box[1]
             w = selector.box[2] - x
             h = selector.box[3] - y
-            new_rois[roi_name] = [x, y, w, h]
+            roi_data_dict[roi_name] = [x, y, w, h]
             if not messagebox.askyesno(
                 translations['roi_add_another_title'][current_lang],
                 translations['roi_add_another_text'][current_lang].format(content=roi_name)
             ):
                 break
         else:
-            if not messagebox.askyesno("Cancel?", "No name entered. Stop creating this ROI set?"):
+            if not messagebox.askyesno("Cancel?", "No name entered. Stop this process?"):
                 continue
             else:
                 break
+    return roi_data_dict
+
+def start_roi_set_creation():
+    """Called by 'Create New ROI Set' button."""
+    new_rois = _roi_creation_loop({})
     if not new_rois:
         return
     set_filename = simpledialog.askstring(
@@ -533,11 +680,33 @@ def start_roi_set_creation():
         save_path = os.path.join(ROI_DIR, set_filename)
         try:
             with open(save_path, 'w', encoding='utf-8') as f:
-                json.dump(new_rois, f, indent=4, ensure_ascii=False) # Fix for Japanese
+                json.dump(new_rois, f, indent=4, ensure_ascii=False)
             update_status('status_roi_saved', set_filename)
             refresh_roi_file_list()
         except Exception as e:
             update_status('status_error', str(e))
+
+def start_add_to_roi_set():
+    """Called by 'Add to Selected Set' button."""
+    selected_items = roi_set_list.selection()
+    if not selected_items:
+        messagebox.showwarning("No Selection", translations['select_roi_set_prompt'][current_lang])
+        return
+    set_filename = selected_items[0]
+    filepath = os.path.join(ROI_DIR, set_filename)
+    try:
+        with open(filepath, 'r', encoding='utf-8') as f:
+            existing_rois = json.load(f)
+    except Exception as e:
+        update_status('status_error', str(e))
+        return
+    updated_rois = _roi_creation_loop(existing_rois)
+    try:
+        with open(filepath, 'w', encoding='utf-8') as f:
+            json.dump(updated_rois, f, indent=4, ensure_ascii=False)
+        update_status('status_roi_saved', set_filename)
+    except Exception as e:
+        update_status('status_error', str(e))
 
 # --- Gallery (Tabname) Logic ---
 def refresh_gallery_list():
@@ -549,7 +718,7 @@ def refresh_gallery_list():
         png_files = sorted([f for f in files if f.endswith('.png')], reverse=True)
         for filename in png_files:
             gallery_image_list.insert("", tk.END, text=filename, iid=filename)
-        load_sift_templates()
+        load_all_sift_templates()
     except Exception as e:
         update_status('status_error', str(e))
 
@@ -622,7 +791,7 @@ def delete_gallery_item():
 
 # --- ROI Set File Logic ---
 def refresh_roi_file_list():
-    """(MODIFIED) Refreshes ROI Set list ONLY."""
+    """Refreshes ROI Set list ONLY."""
     try:
         for item in roi_set_list.get_children():
             roi_set_list.delete(item)
@@ -630,11 +799,21 @@ def refresh_roi_file_list():
         json_files = sorted([f for f in files if f.endswith('.json')], reverse=True)
         for filename in json_files:
             roi_set_list.insert("", tk.END, text=filename, iid=filename)
-        # (DELETED) Dropdown update logic
+        on_roi_set_select(None)
     except Exception as e:
         update_status('status_error', str(e))
 
-# (DELETED) on_active_roi_select function
+def on_roi_set_select(event):
+    """Enables/disables ROI action buttons based on selection."""
+    selected_items = roi_set_list.selection()
+    if selected_items:
+        add_to_roi_set_button.config(state=tk.NORMAL)
+        roi_rename_button.config(state=tk.NORMAL)
+        roi_delete_button.config(state=tk.NORMAL)
+    else:
+        add_to_roi_set_button.config(state=tk.DISABLED)
+        roi_rename_button.config(state=tk.DISABLED)
+        roi_delete_button.config(state=tk.DISABLED)
 
 def rename_roi_file():
     """Renames an ROI .json file."""
@@ -677,6 +856,223 @@ def delete_roi_file():
     except Exception as e:
         update_status('status_error', str(e))
 
+# --- Status Template Management Logic ---
+def refresh_status_folders():
+    """Refreshes the folder list in the Status Tab."""
+    try:
+        for item in status_folder_list.get_children():
+            status_folder_list.delete(item)
+        folders = [f for f in os.listdir(STATUS_TEMPLATE_DIR) if os.path.isdir(os.path.join(STATUS_TEMPLATE_DIR, f))]
+        folders.sort()
+        for foldername in folders:
+            status_folder_list.insert("", tk.END, text=foldername, iid=foldername)
+        for item in status_image_list.get_children():
+            status_image_list.delete(item)
+        status_add_image_button.config(state=tk.DISABLED)
+        status_rename_image_button.config(state=tk.DISABLED)
+        status_delete_image_button.config(state=tk.DISABLED)
+        status_rename_folder_button.config(state=tk.DISABLED)
+        status_delete_folder_button.config(state=tk.DISABLED)
+        status_preview_label.config(image='', text=translations['gallery_placeholder'][current_lang])
+    except Exception as e:
+        update_status('status_error', str(e))
+
+def on_status_folder_select(event):
+    """Populates the image list based on the selected folder."""
+    global status_preview_photo
+    status_preview_photo = None
+    status_rename_image_button.config(state=tk.DISABLED)
+    status_delete_image_button.config(state=tk.DISABLED)
+    try:
+        for item in status_image_list.get_children():
+            status_image_list.delete(item)
+        selected_items = status_folder_list.selection()
+        if not selected_items:
+            status_add_image_button.config(state=tk.DISABLED)
+            status_rename_folder_button.config(state=tk.DISABLED)
+            status_delete_folder_button.config(state=tk.DISABLED)
+            return
+        foldername = selected_items[0]
+        folder_path = os.path.join(STATUS_TEMPLATE_DIR, foldername)
+        files = os.listdir(folder_path)
+        png_files = sorted([f for f in files if f.endswith('.png')])
+        for filename in png_files:
+            status_image_list.insert("", tk.END, text=filename, iid=filename)
+        status_add_image_button.config(state=tk.NORMAL)
+        status_rename_folder_button.config(state=tk.NORMAL)
+        status_delete_folder_button.config(state=tk.NORMAL)
+    except Exception as e:
+        update_status('status_error', str(e))
+        
+def on_status_image_select(event):
+    """Shows a preview of the selected status image."""
+    global status_preview_photo
+    try:
+        folder_items = status_folder_list.selection()
+        image_items = status_image_list.selection()
+        if not folder_items or not image_items:
+            status_rename_image_button.config(state=tk.DISABLED)
+            status_delete_image_button.config(state=tk.DISABLED)
+            return
+        foldername = folder_items[0]
+        filename = image_items[0]
+        filepath = os.path.join(STATUS_TEMPLATE_DIR, foldername, filename)
+        img = Image.open(filepath)
+        max_w = status_preview_label.winfo_width()
+        max_h = status_preview_label.winfo_height()
+        if max_w <= 1: max_w = 200
+        if max_h <= 1: max_h = 200
+        img.thumbnail((max_w, max_h), Image.Resampling.LANCZOS)
+        status_preview_photo = ImageTk.PhotoImage(img)
+        status_preview_label.config(image=status_preview_photo, text="")
+        status_preview_label.image = status_preview_photo
+        status_rename_image_button.config(state=tk.NORMAL)
+        status_delete_image_button.config(state=tk.NORMAL)
+    except Exception as e:
+        status_preview_label.config(image='', text=f"Error loading:\n{e}")
+        status_rename_image_button.config(state=tk.DISABLED)
+        status_delete_image_button.config(state=tk.DISABLED)
+
+def create_status_folder():
+    """Creates a new folder in pictures/status/"""
+    foldername = simpledialog.askstring(
+        translations['create_folder_button'][current_lang],
+        translations['rename_prompt_text'][current_lang],
+        parent=root
+    )
+    if foldername:
+        try:
+            folder_path = os.path.join(STATUS_TEMPLATE_DIR, foldername)
+            os.makedirs(folder_path, exist_ok=True)
+            refresh_status_folders()
+            status_folder_list.selection_set(foldername)
+        except Exception as e:
+            update_status('status_error', str(e))
+
+def rename_status_folder():
+    """Renames a folder in pictures/status/"""
+    try:
+        selected_items = status_folder_list.selection()
+        if not selected_items: return
+        old_foldername = selected_items[0]
+        old_path = os.path.join(STATUS_TEMPLATE_DIR, old_foldername)
+        new_foldername = simpledialog.askstring(
+            translations['rename_folder_button'][current_lang],
+            translations['rename_prompt_text'][current_lang],
+            initialvalue=old_foldername, parent=root
+        )
+        if new_foldername and new_foldername != old_foldername:
+            new_path = os.path.join(STATUS_TEMPLATE_DIR, new_foldername)
+            if os.path.exists(new_path):
+                messagebox.showerror("Error", f"Folder '{new_foldername}' already exists.")
+                return
+            os.rename(old_path, new_path)
+            refresh_status_folders()
+            status_folder_list.selection_set(new_foldername)
+            load_all_sift_templates()
+    except Exception as e:
+        update_status('status_error', str(e))
+
+def delete_status_folder():
+    """Deletes a folder (and its contents) from pictures/status/"""
+    try:
+        selected_items = status_folder_list.selection()
+        if not selected_items: return
+        foldername = selected_items[0]
+        if not messagebox.askyesno(
+            translations['delete_confirm_title'][current_lang],
+            translations['delete_folder_confirm_text'][current_lang].format(content=foldername)
+        ):
+            return
+        folder_path = os.path.join(STATUS_TEMPLATE_DIR, foldername)
+        shutil.rmtree(folder_path)
+        refresh_status_folders()
+        load_all_sift_templates()
+    except Exception as e:
+        update_status('status_error', str(e))
+
+def start_add_status_image():
+    """Captures a region and saves it as a new status image."""
+    selected_folders = status_folder_list.selection()
+    if not selected_folders:
+        messagebox.showwarning("No Folder", translations['select_folder_prompt'][current_lang])
+        return
+    foldername = selected_folders[0]
+    
+    root.withdraw()
+    time.sleep(0.5)
+    selector = RegionSelector(root)
+    root.wait_window(selector.selector_window)
+    root.deiconify()
+    
+    if selector.box:
+        try:
+            cropped_image = selector.background_image.crop(selector.box)
+            imagename = simpledialog.askstring(
+                translations['add_image_prompt_title'][current_lang],
+                translations['add_image_prompt_text'][current_lang],
+                parent=root
+            )
+            if not imagename:
+                return
+            if not imagename.endswith('.png'):
+                imagename += '.png'
+            save_path = os.path.join(STATUS_TEMPLATE_DIR, foldername, imagename)
+            cropped_image.save(save_path)
+            on_status_folder_select(None)
+            status_image_list.selection_set(imagename)
+            load_all_sift_templates() 
+        except Exception as e:
+            update_status('status_error', str(e))
+
+def rename_status_image():
+    """Renames a status image file."""
+    try:
+        folder_items = status_folder_list.selection()
+        image_items = status_image_list.selection()
+        if not folder_items or not image_items: return
+        foldername = folder_items[0]
+        old_filename = image_items[0]
+        old_path = os.path.join(STATUS_TEMPLATE_DIR, foldername, old_filename)
+        new_filename = simpledialog.askstring(
+            translations['rename_image_button'][current_lang],
+            translations['rename_prompt_text'][current_lang],
+            initialvalue=old_filename, parent=root
+        )
+        if new_filename and new_filename != old_filename:
+            if not new_filename.endswith('.png'): new_filename += '.png'
+            new_path = os.path.join(STATUS_TEMPLATE_DIR, foldername, new_filename)
+            if os.path.exists(new_path):
+                messagebox.showerror("Error", f"File '{new_filename}' already exists.")
+                return
+            os.rename(old_path, new_path)
+            on_status_folder_select(None)
+            status_image_list.selection_set(new_filename)
+            load_all_sift_templates()
+    except Exception as e:
+        update_status('status_error', str(e))
+
+def delete_status_image():
+    """Deletes a status image file."""
+    try:
+        folder_items = status_folder_list.selection()
+        image_items = status_image_list.selection()
+        if not folder_items or not image_items: return
+        foldername = folder_items[0]
+        filename = image_items[0]
+        if not messagebox.askyesno(
+            translations['delete_confirm_title'][current_lang],
+            translations['delete_confirm_text'][current_lang].format(content=filename)
+        ):
+            return
+        filepath = os.path.join(STATUS_TEMPLATE_DIR, foldername, filename)
+        os.remove(filepath)
+        on_status_folder_select(None)
+        load_all_sift_templates()
+    except Exception as e:
+        update_status('status_error', str(e))
+
+# --- General Functions ---
 def update_status(text_key, dynamic_content=""):
     try:
         base_text = translations.get(text_key, {}).get(current_lang, text_key)
@@ -719,8 +1115,6 @@ notebook.pack(fill=tk.BOTH, expand=True)
 # ---- 3. สร้าง Tab 1: Auto-Capture ----
 capture_tab = ttk.Frame(notebook)
 notebook.add(capture_tab, text="Capture")
-
-# -- Settings Frame --
 settings_frame = ttk.Frame(capture_tab, padding=(0, 0, 0, 10))
 settings_frame.pack(fill=tk.X)
 interval_label = ttk.Label(settings_frame)
@@ -736,26 +1130,18 @@ capture_region_button = ttk.Button(settings_frame, command=start_region_capture)
 capture_region_button.pack(side=tk.LEFT, padx=15)
 lang_button = ttk.Button(settings_frame, command=toggle_language)
 lang_button.pack(side=tk.RIGHT, padx=5) 
-
-# -- Split Frame --
 split_frame = ttk.Frame(capture_tab, padding=(0, 8, 0, 0))
 split_frame.pack(fill=tk.X)
 split_method_label = ttk.Label(split_frame)
 split_method_label.pack(side=tk.LEFT, padx=(0, 5))
 split_method_combo = ttk.Combobox(split_frame, state="readonly", font=(font_family, 10))
 split_method_combo.pack(side=tk.LEFT, fill=tk.X, expand=True)
-
-# -- (DELETED) Active ROI Set Frame was here --
-
-# -- Progress Bar Frame --
 progress_frame = ttk.Frame(capture_tab, padding=(0, 10, 0, 5))
 progress_frame.pack(fill=tk.X)
 progress_label = ttk.Label(progress_frame)
 progress_label.pack(side=tk.LEFT, padx=(0, 5))
 progress_bar = ttk.Progressbar(progress_frame, orient=tk.HORIZONTAL, mode='determinate')
 progress_bar.pack(fill=tk.X, expand=True)
-
-# -- Crop Display Frame --
 crop_display_frame = tk.Frame(capture_tab, background='#ffffff', relief=tk.SUNKEN, borderwidth=1)
 crop_display_frame.pack(fill=tk.BOTH, expand=True, pady=5)
 
@@ -792,6 +1178,8 @@ roi_action_frame = ttk.Frame(roi_tab, padding=5)
 roi_action_frame.pack(fill=tk.X)
 create_roi_set_button = ttk.Button(roi_action_frame, command=start_roi_set_creation)
 create_roi_set_button.pack(side=tk.LEFT, padx=5, pady=5)
+add_to_roi_set_button = ttk.Button(roi_action_frame, command=start_add_to_roi_set, state=tk.DISABLED)
+add_to_roi_set_button.pack(side=tk.LEFT, padx=5, pady=5)
 roi_refresh_button = ttk.Button(roi_action_frame, command=refresh_roi_file_list)
 roi_refresh_button.pack(side=tk.LEFT, padx=5, pady=5)
 roi_paned_window = ttk.PanedWindow(roi_tab, orient=tk.HORIZONTAL)
@@ -801,23 +1189,61 @@ roi_paned_window.add(roi_list_frame, weight=1)
 roi_set_list = ttk.Treeview(roi_list_frame, selectmode="browse")
 roi_set_list.pack(fill=tk.BOTH, expand=True)
 roi_set_list.heading("#0", text="ROI Set Files")
+roi_set_list.bind("<<TreeviewSelect>>", on_roi_set_select)
 roi_edit_frame = ttk.Frame(roi_paned_window, padding=10)
 roi_paned_window.add(roi_edit_frame, weight=1)
 ttk.Label(roi_edit_frame, text="Selected File Actions:", font=(font_family, 11, 'bold')).pack(pady=10)
-roi_rename_button = ttk.Button(roi_edit_frame, command=rename_roi_file)
+roi_rename_button = ttk.Button(roi_edit_frame, command=rename_roi_file, state=tk.DISABLED)
 roi_rename_button.pack(fill=tk.X, padx=5, pady=5)
-roi_delete_button = ttk.Button(roi_edit_frame, command=delete_roi_file)
+roi_delete_button = ttk.Button(roi_edit_frame, command=delete_roi_file, state=tk.DISABLED)
 roi_delete_button.pack(fill=tk.X, padx=5, pady=5)
 
-# ---- 6. สร้างแถบสถานะ (ล่างสุด) ----
+# ---- 6. สร้าง Tab 4: Status Templates ----
+status_tab = ttk.Frame(notebook)
+notebook.add(status_tab, text="Status Templates")
+status_paned_window = ttk.PanedWindow(status_tab, orient=tk.HORIZONTAL)
+status_paned_window.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+status_folder_frame = ttk.Frame(status_paned_window, padding=5)
+status_paned_window.add(status_folder_frame, weight=1)
+status_folder_actions = ttk.Frame(status_folder_frame)
+status_folder_actions.pack(fill=tk.X, pady=2)
+status_create_folder_button = ttk.Button(status_folder_actions, command=create_status_folder)
+status_create_folder_button.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=2)
+status_rename_folder_button = ttk.Button(status_folder_actions, command=rename_status_folder, state=tk.DISABLED)
+status_rename_folder_button.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=2)
+status_delete_folder_button = ttk.Button(status_folder_actions, command=delete_status_folder, state=tk.DISABLED)
+status_delete_folder_button.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=2)
+status_folder_list = ttk.Treeview(status_folder_frame, selectmode="browse")
+status_folder_list.pack(fill=tk.BOTH, expand=True, pady=5)
+status_folder_list.heading("#0", text="Tabname Folders")
+status_folder_list.bind("<<TreeviewSelect>>", on_status_folder_select)
+status_image_frame = ttk.Frame(status_paned_window, padding=5)
+status_paned_window.add(status_image_frame, weight=2)
+status_image_actions = ttk.Frame(status_image_frame)
+status_image_actions.pack(fill=tk.X, pady=2)
+status_add_image_button = ttk.Button(status_image_actions, command=start_add_status_image, state=tk.DISABLED)
+status_add_image_button.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=2)
+status_rename_image_button = ttk.Button(status_image_actions, command=rename_status_image, state=tk.DISABLED)
+status_rename_image_button.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=2)
+status_delete_image_button = ttk.Button(status_image_actions, command=delete_status_image, state=tk.DISABLED)
+status_delete_image_button.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=2)
+status_image_list = ttk.Treeview(status_image_frame, selectmode="browse")
+status_image_list.pack(fill=tk.BOTH, expand=True, pady=5)
+status_image_list.heading("#0", text="Status Images")
+status_image_list.bind("<<TreeviewSelect>>", on_status_image_select)
+status_preview_label = tk.Label(status_image_frame, background="#ffffff", relief=tk.SUNKEN, borderwidth=1)
+status_preview_label.pack(fill=tk.BOTH, expand=True, pady=5)
+
+# ---- 7. สร้างแถบสถานะ (ล่างสุด) ----
 status_label = ttk.Label(root, relief=tk.SUNKEN, anchor=tk.W, padding=5, font=(font_family, 9))
 status_label.pack(side=tk.BOTTOM, fill=tk.X)
 
-# ---- 7. ตั้งค่าการปิดหน้าต่าง และเริ่มแอป ----
+# ---- 8. ตั้งค่าการปิดหน้าต่าง และเริ่มแอป ----
 root.protocol("WM_DELETE_WINDOW", on_closing) 
 set_language(current_lang)
 clear_image_display() 
-refresh_gallery_list()
+refresh_gallery_list() # This loads ALL SIFT caches
 refresh_roi_file_list()
+refresh_status_folders()
 on_gallery_item_select(None)
 root.mainloop()
