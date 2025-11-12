@@ -13,13 +13,15 @@ import cv2
 import json
 import easyocr # For OCR
 import shutil # For deleting folders
+import requests # For sending data
 
 # --- SIFT Global Initialization ---
 try:
     sift = cv2.SIFT_create()
     tabname_sift_cache = {}
     status_sift_caches = {}
-    SIFT_MATCH_THRESHOLD = 70
+    TABNAME_SIFT_THRESHOLD = 70
+    STATUS_SIFT_THRESHOLD = 15
 except Exception as e:
     messagebox.showerror("OpenCV Error", f"ไม่สามารถเริ่ม SIFT ได้ (อาจต้องติดตั้ง opencv-contrib-python)\n{e}")
     sys.exit()
@@ -32,8 +34,6 @@ try:
 except Exception as e:
     messagebox.showerror("EasyOCR Error", f"Could not initialize EasyOCR.\n{e}")
     sys.exit()
-
-# (MODIFIED) เพิ่มจุดทศนิยม
 OCR_ALLOWLIST = '-.0123456789'
 
 # --- Base Path Logic ---
@@ -49,6 +49,7 @@ BASE_PATH = get_base_path()
 TABNAME_DIR = os.path.join(BASE_PATH, "pictures", "tabname") 
 STATUS_TEMPLATE_DIR = os.path.join(BASE_PATH, "pictures", "status")
 ROI_DIR = os.path.join(BASE_PATH, "rois")
+CONFIG_FILE_PATH = os.path.join(BASE_PATH, "config.json")
 os.makedirs(TABNAME_DIR, exist_ok=True)
 os.makedirs(STATUS_TEMPLATE_DIR, exist_ok=True)
 os.makedirs(ROI_DIR, exist_ok=True)
@@ -98,11 +99,12 @@ SPLIT_ORDER = ["NONE", "P1_34_34_16_16", "P2_25x4", "P3_25_25_50", "P4_50_50"]
 
 # --- Language Data (คลังคำศัพท์) ---
 translations = {
-    'app_title': {'en': 'Capture Tool v0.13 (Raw OCR)', 'ja': 'キャプチャーツール v0.13 (生OCR)'}, # (MODIFIED)
+    'app_title': {'en': 'Capture Tool v0.15 (Paste Fix)', 'ja': 'キャプチャーツール v0.15 (ペースト修正)'}, # (MODIFIED)
     'tab_capture': {'en': 'Auto-Capture', 'ja': '自動キャプチャ'},
     'tab_gallery': {'en': 'Tabname', 'ja': 'タブ名'}, 
     'tab_roi_sets': {'en': 'ROI Sets', 'ja': 'ROIセット'},
     'tab_status': {'en': 'Status Templates', 'ja': 'ステータス・テンプレート'},
+    'tab_settings': {'en': 'Settings', 'ja': '設定'},
     'interval_label': {'en': 'Interval (sec):', 'ja': '間隔 (秒):'},
     'start_button': {'en': 'Start Auto', 'ja': '自動開始'},
     'stop_button': {'en': 'Stop Auto', 'ja': '自動停止'},
@@ -136,11 +138,17 @@ translations = {
     'add_image_prompt_title': {'en': 'Enter Status Name', 'ja': 'ステータス名入力'},
     'add_image_prompt_text': {'en': 'Enter name for this status (e.g., "Cooling"):', 'ja': 'このステータスの名前を入力してください (例: "Cooling"):'},
     'select_folder_prompt': {'en': 'Please select a folder first.', 'ja': 'まずフォルダを選択してください。'},
+    'g_sheet_url_label': {'en': 'Google Sheet Web App URL:', 'ja': 'Google Sheet Web AppのURL:'},
+    'g_sheet_save_button': {'en': 'Save URL', 'ja': 'URL保存'},
+    'status_config_saved': {'en': 'Configuration saved.', 'ja': '設定を保存しました。'},
     'rename_prompt_title': {'en': 'Rename File', 'ja': '名前の変更'},
     'rename_prompt_text': {'en': 'Enter new filename:', 'ja': '新しいファイル名を入力:'},
     'delete_confirm_title': {'en': 'Confirm Delete', 'ja': '削除の確認'},
     'delete_confirm_text': {'en': 'Are you sure you want to delete this file?\n{content}', 'ja': 'このファイルを削除してもよろしいですか？\n{content}'},
     'delete_folder_confirm_text': {'en': 'Are you sure you want to PERMANENTLY delete this folder and ALL images inside it?\n{content}', 'ja': 'このフォルダと中の画像をすべて完全に削除してもよろしいですか？\n{content}'},
+    'validation_pass': {'en': 'Data OK', 'ja': 'データ正常'},
+    'validation_incomplete': {'en': 'Incomplete Data (N/A)', 'ja': 'データ不完全 (N/A)'},
+    'validation_invalid': {'en': 'Invalid Data (Out of Range)', 'ja': 'データ異常 (範囲外)'},
     'status_idle': {'en': 'Status: Idle', 'ja': 'ステータス: 待機中'},
     'status_running': {'en': 'Auto-Capture running... (every {content} sec)', 'ja': '自動キャプチャ実行中... ({content} 秒ごと)'},
     'status_stopped': {'en': 'Status: Stopped', 'ja': 'ステータス: 停止'},
@@ -151,6 +159,8 @@ translations = {
     'status_sift_done': {'en': 'SIFT templates loaded ({content[0]} tabnames, {content[1]} statuses).', 'ja': 'SIFTテンプレートを読込完了 (タブ名{content[0]}件、ステータス{content[1]}件)。'},
     'status_roi_saved': {'en': 'ROI Set "{content}" saved.', 'ja': 'ROIセット「{content}」を保存しました。'},
     'status_roi_error': {'en': 'Failed to load/save ROI data.', 'ja': 'ROIデータの読み込み/保存に失敗しました。'},
+    'status_data_sending': {'en': 'Sending data to Google Sheet...', 'ja': 'Google Sheetにデータを送信中...'},
+    'status_data_sent': {'en': 'Data sent to sheet: {content}', 'ja': 'シートにデータを送信しました: {content}'},
     'error_title': {'en': 'Invalid Input', 'ja': '無効な入力'},
     'error_message': {'en': 'Please enter a valid number (seconds > 1).\n{content}', 'ja': '有効な数字（1秒以上）を入力してください。\n{content}'},
     'confirm_close_title': {'en': 'Confirm Exit', 'ja': '終了確認'},
@@ -189,6 +199,37 @@ status_delete_image_button = None
 status_create_folder_button = None
 status_rename_folder_button = None
 status_delete_folder_button = None
+g_sheet_url = ""
+g_sheet_url_entry = None
+g_sheet_save_button = None
+settings_tab = None
+
+# --- (NEW) Custom Entry with Right-Click ---
+class EntryWithRightClickMenu(ttk.Entry):
+    def __init__(self, parent, *args, **kwargs):
+        super().__init__(parent, *args, **kwargs)
+        
+        self.context_menu = tk.Menu(self, tearoff=0)
+        self.context_menu.add_command(label="Cut", command=self.do_cut)
+        self.context_menu.add_command(label="Copy", command=self.do_copy)
+        self.context_menu.add_command(label="Paste", command=self.do_paste)
+        
+        self.bind("<Button-3>", self.show_context_menu)
+        
+    def show_context_menu(self, event):
+        try:
+            self.context_menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            self.context_menu.grab_release()
+
+    def do_cut(self):
+        self.event_generate("<<Cut>>")
+
+    def do_copy(self):
+        self.event_generate("<<Copy>>")
+
+    def do_paste(self):
+        self.event_generate("<<Paste>>")
 
 # --- Custom Dialog for ROI Naming ---
 class AskROINameDialog(simpledialog.Dialog):
@@ -198,11 +239,40 @@ class AskROINameDialog(simpledialog.Dialog):
         super().__init__(parent, title)
     def body(self, master):
         ttk.Label(master, text=self.text).pack(pady=5)
+        # (MODIFIED) Use the new EntryWithRightClickMenu
         self.combo = ttk.Combobox(master, values=self.predefined_names, width=50)
         self.combo.pack(padx=10, pady=5)
         return self.combo
     def apply(self):
         self.result = self.combo.get()
+
+# --- Config Persistence ---
+def load_config():
+    """Loads Google Sheet URL from config.json."""
+    global g_sheet_url
+    try:
+        if os.path.exists(CONFIG_FILE_PATH):
+            with open(CONFIG_FILE_PATH, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                g_sheet_url = data.get("g_sheet_url", "")
+                if g_sheet_url_entry:
+                    g_sheet_url_entry.delete(0, tk.END)
+                    g_sheet_url_entry.insert(0, g_sheet_url)
+    except Exception as e:
+        print(f"Error loading config: {e}")
+        g_sheet_url = ""
+
+def save_config():
+    """Saves Google Sheet URL to config.json."""
+    global g_sheet_url
+    try:
+        g_sheet_url = g_sheet_url_entry.get()
+        data = {"g_sheet_url": g_sheet_url}
+        with open(CONFIG_FILE_PATH, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=4)
+        update_status('status_config_saved')
+    except Exception as e:
+        update_status('status_error', f"Config save failed: {e}")
 
 def set_language(lang_code):
     global current_lang, image_placeholder_label
@@ -213,6 +283,7 @@ def set_language(lang_code):
     notebook.tab(gallery_tab, text=translations['tab_gallery'][current_lang])
     notebook.tab(roi_tab, text=translations['tab_roi_sets'][current_lang])
     notebook.tab(status_tab, text=translations['tab_status'][current_lang])
+    notebook.tab(settings_tab, text=translations['tab_settings'][current_lang])
     
     # Capture Tab
     interval_label.config(text=translations['interval_label'][current_lang])
@@ -256,6 +327,10 @@ def set_language(lang_code):
     status_rename_image_button.config(text=translations['rename_image_button'][current_lang])
     status_delete_image_button.config(text=translations['delete_image_button'][current_lang])
 
+    # Settings Tab
+    g_sheet_url_label.config(text=translations['g_sheet_url_label'][current_lang])
+    g_sheet_save_button.config(text=translations['g_sheet_save_button'][current_lang])
+    
     if not is_running:
         status_label.config(text=translations['status_idle'][current_lang])
         if image_placeholder_label:
@@ -320,12 +395,12 @@ def load_all_sift_templates():
     except Exception as e:
         update_status('status_error', f"Status SIFT load failed: {e}")
 
-def _find_best_sift_match(image_to_check_pil, template_cache):
+def _find_best_sift_match(image_to_check_pil, template_cache, match_threshold):
     if not template_cache: return "None"
     try:
         img_crop_gray = pil_to_cv2_gray(image_to_check_pil)
         kp_crop, des_crop = sift.detectAndCompute(img_crop_gray, None)
-        if des_crop is None or len(kp_crop) < SIFT_MATCH_THRESHOLD:
+        if des_crop is None or len(kp_crop) < match_threshold:
             return "None"
         FLANN_INDEX_KDTREE = 1
         index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=5)
@@ -338,7 +413,7 @@ def _find_best_sift_match(image_to_check_pil, template_cache):
             if len(kp_crop) < 2 or len(kp_template) < 2: continue
             matches = flann.knnMatch(des_crop, des_template, k=2)
             good_matches = [m for m, n in matches if m.distance < 0.7 * n.distance]
-            if len(good_matches) > SIFT_MATCH_THRESHOLD and len(good_matches) > max_good_matches:
+            if len(good_matches) > match_threshold and len(good_matches) > max_good_matches:
                 max_good_matches = len(good_matches)
                 best_match_name = filename
         return best_match_name
@@ -350,15 +425,97 @@ def find_best_tabname_match(cropped_pil_image):
     w, h = cropped_pil_image.size
     top_half_box = (0, 0, w, h // 2)
     image_to_check = cropped_pil_image.crop(top_half_box)
-    return _find_best_sift_match(image_to_check, tabname_sift_cache)
+    return _find_best_sift_match(image_to_check, tabname_sift_cache, TABNAME_SIFT_THRESHOLD)
 
 def find_best_status_match(roi_crop_pil, tabname_match_key):
     if tabname_match_key not in status_sift_caches:
         return "None"
     status_cache_for_this_tab = status_sift_caches[tabname_match_key]
-    return _find_best_sift_match(roi_crop_pil, status_cache_for_this_tab)
+    return _find_best_sift_match(roi_crop_pil, status_cache_for_this_tab, STATUS_SIFT_THRESHOLD)
 
-# --- (DELETED) preprocess_for_ocr function was here ---
+def preprocess_for_ocr(pil_image, scale_factor=4):
+    """Prepares a small PIL image for better OCR results."""
+    try:
+        cv_img = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
+        width = int(cv_img.shape[1] * scale_factor)
+        height = int(cv_img.shape[0] * scale_factor)
+        if width == 0 or height == 0: return None
+        upscaled = cv2.resize(cv_img, (width, height), interpolation=cv2.INTER_LANCZOS4)
+        gray = cv2.cvtColor(upscaled, cv2.COLOR_BGR2GRAY)
+        bw_img = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                     cv2.THRESH_BINARY, 11, 2)
+        bw_img_inverted = cv2.bitwise_not(bw_img)
+        return bw_img_inverted
+    except Exception as e:
+        print(f"OCR Preprocessing error: {e}")
+        return cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2GRAY)
+
+# --- Data Validation Logic ---
+def validate_data(data_results):
+    """
+    Checks if data is complete (no 'N/A') and valid (follows rules).
+    Returns a status string and color.
+    """
+    if not data_results:
+        return "", "black"
+
+    is_complete = True
+    is_valid = True
+    
+    for key, value in data_results.items():
+        if value in ["N/A", "Error"]:
+            is_complete = False
+            break
+            
+    if not is_complete:
+        return translations['validation_incomplete'][current_lang], "red"
+        
+    for key, value in data_results.items():
+        try:
+            num_val = float(value)
+            if ("℃" in key or "ppm" in key) and num_val < 0:
+                is_valid = False
+                break
+            elif ("%" in key) and not (0 <= num_val <= 100):
+                is_valid = False
+                break
+        except (ValueError, TypeError):
+            pass 
+            
+    if not is_valid:
+        return translations['validation_invalid'][current_lang], "orange"
+        
+    return translations['validation_pass'][current_lang], "green"
+
+# --- Google Sheet Upload Logic ---
+def _send_data_worker(url, payload):
+    """Worker thread to send data without freezing GUI."""
+    try:
+        root.after(0, update_status, 'status_data_sending')
+        response = requests.post(url, json=payload, timeout=10)
+        response.raise_for_status()
+        root.after(0, update_status, 'status_data_sent', payload.get("sheetName"))
+    except requests.RequestException as e:
+        root.after(0, update_status, 'status_error', f"GSheet: {e}")
+
+def send_data_to_google_sheet(tabname, data_results):
+    """Formats data and starts the sender thread."""
+    if not g_sheet_url:
+        return
+    try:
+        sheetName = tabname.replace(".png", "")
+        headers = ["Timestamp"] + list(data_results.keys())
+        values = [datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")] + list(data_results.values())
+        
+        payload = {
+            "sheetName": sheetName,
+            "headers": headers,
+            "values": values
+        }
+        
+        threading.Thread(target=_send_data_worker, args=(g_sheet_url, payload), daemon=True).start()
+    except Exception as e:
+        root.after(0, update_status, 'status_error', f"GSheet formatting: {e}")
 
 # --- Auto-Capture Logic ---
 def start_capture():
@@ -410,12 +567,15 @@ def update_countdown(current_step, interval):
         timer_job_id = root.after(100, update_countdown, 0, interval) 
 
 def perform_capture_task():
+    """Calls validation and GSheet sender."""
     try:
         image = ImageGrab.grab()
         selected_index = split_method_combo.current()
         method_key = SPLIT_ORDER[selected_index]
         split_function = SPLIT_OPTIONS[method_key]['func']
+        
         final_results = []
+        
         if split_function:
             boxes = split_function(image)
             for (x, y, w, h) in boxes:
@@ -425,22 +585,27 @@ def perform_capture_task():
                 data_results = {}
                 if match_name != "None":
                     data_results = extract_data_from_rois(crop_pil, match_name, (x, y))
-                final_results.append((crop_pil, match_name, (x, y), data_results))
+                status_text, status_color = validate_data(data_results)
+                if match_name != "None" and status_text == translations['validation_pass'][current_lang]:
+                    send_data_to_google_sheet(match_name, data_results)
+                final_results.append((crop_pil, match_name, (x, y), data_results, (status_text, status_color)))
         else:
             crop_pil = image
             match_name = find_best_tabname_match(crop_pil)
             data_results = {}
             if match_name != "None":
                 data_results = extract_data_from_rois(crop_pil, match_name, (0, 0))
-            final_results.append((crop_pil, match_name, (0, 0), data_results))
+            status_text, status_color = validate_data(data_results)
+            if match_name != "None" and status_text == translations['validation_pass'][current_lang]:
+                send_data_to_google_sheet(match_name, data_results)
+            final_results.append((crop_pil, match_name, (0, 0), data_results, (status_text, status_color)))
+
         root.after(0, update_gui_with_sift_results, final_results)
     except Exception as e:
         root.after(0, update_status, 'status_error', str(e))
 
 def extract_data_from_rois(pil_image, tabname_match, crop_offset):
-    """
-    (MODIFIED v0.13) SIFT for '運転状況', RAW OCR for ALL OTHERS.
-    """
+    """SIFT for '運転状況', Upscaled OCR for ALL OTHERS."""
     data_results = {}
     crop_offset_x, crop_offset_y = crop_offset
     roi_filename = tabname_match.replace(".png", "") + ".json"
@@ -466,25 +631,20 @@ def extract_data_from_rois(pil_image, tabname_match, crop_offset):
 
             roi_crop_pil = pil_image.crop(roi_box_pil)
 
-            # --- (MODIFIED LOGIC v0.13) ---
             if "運転状況" in roi_key:
-                # 1. SIFT Task
                 status_match = find_best_status_match(roi_crop_pil, tabname_match)
                 data_results[roi_key] = status_match.replace(".png", "")
             else:
-                # 2. OCR Task (Raw, no preprocessing)
-                
-                # (NEW) Convert PIL to CV2/Numpy array (what easyocr expects)
-                roi_cv_image = cv2.cvtColor(np.array(roi_crop_pil), cv2.COLOR_RGB2BGR)
-
-                ocr_results = ocr_reader.readtext(roi_cv_image, allowlist=OCR_ALLOWLIST, detail=0)
+                processed_img = preprocess_for_ocr(roi_crop_pil)
+                if processed_img is None:
+                    data_results[roi_key] = "N/A"
+                    continue
+                ocr_results = ocr_reader.readtext(processed_img, allowlist=OCR_ALLOWLIST, detail=0)
                 extracted_text = "".join(ocr_results).strip()
-                
                 if not extracted_text:
                     data_results[roi_key] = "N/A"
                 else:
                     data_results[roi_key] = extracted_text
-            # --- (END MODIFIED LOGIC) ---
             
         except Exception as e:
             print(f"Error processing ROI {roi_key}: {e}")
@@ -497,10 +657,11 @@ def clear_image_display():
     for widget in crop_display_frame.winfo_children():
         widget.destroy()
     image_placeholder_label = tk.Label(crop_display_frame, font=(font_family, 12, 'italic'), background='#ffffff', foreground='#888888', text=translations['image_placeholder'][current_lang])
-    image_placeholder_label.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+    image_placeholder_label.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
+
 
 def update_gui_with_sift_results(sift_results):
-    """(MODIFIED v0.12) Draws boxes, but puts text in labels below."""
+    """(REPLACED v0.13) New side-by-side layout."""
     global auto_cap_photos, image_placeholder_label
     
     auto_cap_photos.clear()
@@ -512,17 +673,20 @@ def update_gui_with_sift_results(sift_results):
         return
 
     num_images = len(sift_results)
-    container_width = crop_display_frame.winfo_width()
-    container_height = crop_display_frame.winfo_height()
-    if container_width <= 1: container_width = 830
-    if container_height <= 1: container_height = 450
     
-    max_img_width = (container_width // num_images) - (num_images * 4) 
-    
-    for (pil_image, match_name, (crop_offset_x, crop_offset_y), data_results) in sift_results:
-        result_frame = tk.Frame(crop_display_frame, background="#ffffff", relief=tk.SUNKEN, borderwidth=1)
-        display_image = pil_image.copy()
+    for (pil_image, match_name, (crop_offset_x, crop_offset_y), data_results, (status_text, status_color)) in sift_results:
         
+        result_frame = tk.Frame(crop_display_frame, background="#f0f0f0", relief=tk.SUNKEN, borderwidth=1)
+        
+        image_frame = ttk.Frame(result_frame)
+        image_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(5, 10), pady=5)
+        
+        data_frame = ttk.Frame(result_frame, width=250)
+        data_frame.pack(side=tk.LEFT, fill=tk.Y, pady=5, ipadx=10)
+        data_frame.pack_propagate(False)
+
+        # --- Populate Image Frame ---
+        display_image = pil_image.copy()
         if match_name != "None":
             try:
                 cv_image = cv2.cvtColor(np.array(display_image), cv2.COLOR_RGB2BGR)
@@ -539,35 +703,44 @@ def update_gui_with_sift_results(sift_results):
                         img_h, img_w = cv_image.shape[:2]
                         if local_x > img_w or local_y > img_h or (local_x + global_w) < 0 or (local_y + global_h) < 0:
                             continue
-
-                        cv2.rectangle(cv_image, (local_x, local_y), (local_x + global_w, local_y + global_h), (0, 255, 0), 2)
                         
-                        # (DELETED) cv2.putText(...) line removed
-
+                        color = (0, 0, 255) # Red (OCR)
+                        if "運転状況" in roi_key:
+                            color = (255, 0, 0) # Blue (SIFT)
+                        cv2.rectangle(cv_image, (local_x, local_y), (local_x + global_w, local_y + global_h), color, 2)
+                
                 display_image = Image.fromarray(cv2.cvtColor(cv_image, cv2.COLOR_BGR2RGB))
             except Exception as e:
                 print(f"Error drawing ROI: {e}")
 
-        display_image.thumbnail((max_img_width, container_height - 100), Image.Resampling.LANCZOS)
+        container_width = (root.winfo_width() // num_images) - 300
+        if container_width < 100: container_width = 100
+        display_image.thumbnail((container_width, 500), Image.Resampling.LANCZOS)
+        
         photo = ImageTk.PhotoImage(display_image)
         auto_cap_photos.append(photo)
         
-        image_label = tk.Label(result_frame, image=photo, background="#ffffff")
+        image_label = tk.Label(image_frame, image=photo, background="#ffffff")
         image_label.image = photo 
-        image_label.pack(side=tk.TOP, fill=tk.BOTH, expand=True, padx=2, pady=2)
+        image_label.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
 
+        # --- Populate Data Frame ---
         display_name = match_name.replace(".png", "")
         name_color = "green" if match_name != "None" else "red"
-        name_label = tk.Label(result_frame, text=display_name, font=(font_family, 10, 'bold'), background="#ffffff", foreground=name_color, anchor=tk.W)
-        name_label.pack(side=tk.TOP, fill=tk.X, pady=(5,0), padx=5)
         
+        name_label = ttk.Label(data_frame, text=display_name, font=(font_family, 11, 'bold'), foreground=name_color, anchor=tk.W)
+        name_label.pack(side=tk.TOP, fill=tk.X, pady=(0, 5))
+        
+        validation_label = ttk.Label(data_frame, text=status_text, font=(font_family, 10, 'bold'), foreground=status_color, anchor=tk.W)
+        validation_label.pack(side=tk.TOP, fill=tk.X, pady=(0, 10))
+
         data_text = "\n".join([f"{key}: {value}" for key, value in data_results.items()])
         if not data_text:
-            data_text = " "
+            data_text = "No ROI data found."
             
-        data_label = tk.Label(result_frame, text=data_text, font=(font_family, 9, 'italic'), 
-                              background="#ffffff", foreground="black", justify=tk.LEFT, anchor=tk.NW)
-        data_label.pack(side=tk.TOP, fill=tk.X, pady=(0, 5), padx=5)
+        data_label = ttk.Label(data_frame, text=data_text, font=(font_family, 9), 
+                              foreground="black", justify=tk.LEFT, anchor=tk.NW)
+        data_label.pack(side=tk.TOP, fill=tk.X)
 
         result_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=2, pady=2)
 
@@ -1107,6 +1280,9 @@ style.configure('Horizontal.TProgressbar', thickness=15)
 style.configure('TCombobox', font=(font_family, 10))
 style.configure('TNotebook.Tab', font=(font_family, 10, 'bold'), padding=[10, 5])
 style.configure('Treeview.Heading', font=(font_family, 11, 'bold'))
+style.configure('Bold.TLabel', font=(font_family, 11, 'bold'))
+style.configure('Data.TLabel', font=(font_family, 9))
+style.configure('Status.TLabel', font=(font_family, 10, 'bold'))
 
 # ---- 2. สร้าง Notebook (Tabbed Interface) ----
 notebook = ttk.Notebook(root, padding=10)
@@ -1234,11 +1410,29 @@ status_image_list.bind("<<TreeviewSelect>>", on_status_image_select)
 status_preview_label = tk.Label(status_image_frame, background="#ffffff", relief=tk.SUNKEN, borderwidth=1)
 status_preview_label.pack(fill=tk.BOTH, expand=True, pady=5)
 
-# ---- 7. สร้างแถบสถานะ (ล่างสุด) ----
+# ---- 7. สร้าง Tab 5: Settings ----
+settings_tab = ttk.Frame(notebook, padding=10)
+notebook.add(settings_tab, text="Settings")
+
+g_sheet_frame = ttk.Frame(settings_tab)
+g_sheet_frame.pack(fill=tk.X, pady=10)
+
+g_sheet_url_label = ttk.Label(g_sheet_frame, text="Google Sheet Web App URL:", anchor=tk.W)
+g_sheet_url_label.pack(fill=tk.X)
+
+# (MODIFIED) Use the new EntryWithRightClickMenu
+g_sheet_url_entry = EntryWithRightClickMenu(g_sheet_frame, width=80) 
+g_sheet_url_entry.pack(fill=tk.X, pady=(5, 10))
+
+g_sheet_save_button = ttk.Button(g_sheet_frame, command=save_config)
+g_sheet_save_button.pack(anchor=tk.W)
+
+
+# ---- 8. สร้างแถบสถานะ (ล่างสุด) ----
 status_label = ttk.Label(root, relief=tk.SUNKEN, anchor=tk.W, padding=5, font=(font_family, 9))
 status_label.pack(side=tk.BOTTOM, fill=tk.X)
 
-# ---- 8. ตั้งค่าการปิดหน้าต่าง และเริ่มแอป ----
+# ---- 9. ตั้งค่าการปิดหน้าต่าง และเริ่มแอป ----
 root.protocol("WM_DELETE_WINDOW", on_closing) 
 set_language(current_lang)
 clear_image_display() 
@@ -1246,4 +1440,6 @@ refresh_gallery_list() # This loads ALL SIFT caches
 refresh_roi_file_list()
 refresh_status_folders()
 on_gallery_item_select(None)
+on_roi_set_select(None)
+load_config() # Load the saved URL
 root.mainloop()
