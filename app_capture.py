@@ -20,8 +20,8 @@ try:
     sift = cv2.SIFT_create()
     tabname_sift_cache = {}
     status_sift_caches = {}
-    TABNAME_SIFT_THRESHOLD = 70
-    STATUS_SIFT_THRESHOLD = 15
+    TABNAME_SIFT_THRESHOLD = 70  
+    STATUS_SIFT_THRESHOLD = 15   
 except Exception as e:
     messagebox.showerror("OpenCV Error", f"ไม่สามารถเริ่ม SIFT ได้ (อาจต้องติดตั้ง opencv-contrib-python)\n{e}")
     sys.exit()
@@ -62,6 +62,15 @@ PREDEFINED_ROI_NAMES = [
     "燃焼炉_温度_℃", "排ガス濃度_CO濃度_ppm"
 ]
 
+# --- (NEW) Predefined lists for Comboboxes ---
+PREDEFINED_TABNAME_NAMES = [
+    "富山環境整備", "ジェムカ", "ループ", "ニセコ", "武京商会", 
+    "光陽建設", "鈴木工業", "直富商事", "九州産廃", "環境整備"
+]
+PREDEFINED_STATUS_NAMES = [
+    "Auto", "None", "Cooling"
+]
+
 # --- DPI Awareness Fix ---
 try:
     from ctypes import windll
@@ -99,7 +108,7 @@ SPLIT_ORDER = ["NONE", "P1_34_34_16_16", "P2_25x4", "P3_25_25_50", "P4_50_50"]
 
 # --- Language Data (คลังคำศัพท์) ---
 translations = {
-    'app_title': {'en': 'Capture Tool v0.15 (Paste Fix)', 'ja': 'キャプチャーツール v0.15 (ペースト修正)'}, # (MODIFIED)
+    'app_title': {'en': 'Capture Tool v0.16 (Name Picker)', 'ja': 'キャプチャーツール v0.16 (名前選択)'}, # (MODIFIED)
     'tab_capture': {'en': 'Auto-Capture', 'ja': '自動キャプチャ'},
     'tab_gallery': {'en': 'Tabname', 'ja': 'タブ名'}, 
     'tab_roi_sets': {'en': 'ROI Sets', 'ja': 'ROIセット'},
@@ -139,7 +148,9 @@ translations = {
     'add_image_prompt_text': {'en': 'Enter name for this status (e.g., "Cooling"):', 'ja': 'このステータスの名前を入力してください (例: "Cooling"):'},
     'select_folder_prompt': {'en': 'Please select a folder first.', 'ja': 'まずフォルダを選択してください。'},
     'g_sheet_url_label': {'en': 'Google Sheet Web App URL:', 'ja': 'Google Sheet Web AppのURL:'},
-    'g_sheet_save_button': {'en': 'Save URL', 'ja': 'URL保存'},
+    'g_sheet_save_button': {'en': 'Save All Settings', 'ja': 'すべての設定を保存'},
+    'tabname_threshold_label': {'en': 'Tabname SIFT Threshold (e.g., 70):', 'ja': 'タブ名SIFTしきい値 (例: 70):'},
+    'status_threshold_label': {'en': 'Status SIFT Threshold (e.g., 15):', 'ja': 'ステータスSIFTしきい値 (例: 15):'},
     'status_config_saved': {'en': 'Configuration saved.', 'ja': '設定を保存しました。'},
     'rename_prompt_title': {'en': 'Rename File', 'ja': '名前の変更'},
     'rename_prompt_text': {'en': 'Enter new filename:', 'ja': '新しいファイル名を入力:'},
@@ -163,6 +174,8 @@ translations = {
     'status_data_sent': {'en': 'Data sent to sheet: {content}', 'ja': 'シートにデータを送信しました: {content}'},
     'error_title': {'en': 'Invalid Input', 'ja': '無効な入力'},
     'error_message': {'en': 'Please enter a valid number (seconds > 1).\n{content}', 'ja': '有効な数字（1秒以上）を入力してください。\n{content}'},
+    'error_threshold': {'en': 'Invalid Threshold', 'ja': '無効なしきい値'},
+    'error_threshold_text': {'en': 'Threshold values must be integers.', 'ja': 'しきい値は整数である必要があります。'},
     'confirm_close_title': {'en': 'Confirm Exit', 'ja': '終了確認'},
     'confirm_close_message': {'en': 'Auto-Capture is running. Are you sure you want to stop and exit?', 'ja': '自動キャプチャが実行中です。停止して終了しますか？'},
     'lang_button': {'en': '日本語', 'ja': 'English'},
@@ -203,53 +216,50 @@ g_sheet_url = ""
 g_sheet_url_entry = None
 g_sheet_save_button = None
 settings_tab = None
+tabname_threshold_entry = None
+status_threshold_entry = None
 
-# --- (NEW) Custom Entry with Right-Click ---
+# --- Custom Entry with Right-Click ---
 class EntryWithRightClickMenu(ttk.Entry):
     def __init__(self, parent, *args, **kwargs):
         super().__init__(parent, *args, **kwargs)
-        
         self.context_menu = tk.Menu(self, tearoff=0)
         self.context_menu.add_command(label="Cut", command=self.do_cut)
         self.context_menu.add_command(label="Copy", command=self.do_copy)
         self.context_menu.add_command(label="Paste", command=self.do_paste)
-        
         self.bind("<Button-3>", self.show_context_menu)
-        
     def show_context_menu(self, event):
         try:
             self.context_menu.tk_popup(event.x_root, event.y_root)
         finally:
             self.context_menu.grab_release()
+    def do_cut(self): self.event_generate("<<Cut>>")
+    def do_copy(self): self.event_generate("<<Copy>>")
+    def do_paste(self): self.event_generate("<<Paste>>")
 
-    def do_cut(self):
-        self.event_generate("<<Cut>>")
-
-    def do_copy(self):
-        self.event_generate("<<Copy>>")
-
-    def do_paste(self):
-        self.event_generate("<<Paste>>")
-
-# --- Custom Dialog for ROI Naming ---
+# --- (MODIFIED) Custom Dialog for ROI Naming (now with initial value) ---
 class AskROINameDialog(simpledialog.Dialog):
-    def __init__(self, parent, title, text, predefined_names):
+    """Custom dialog to ask for ROI name with a combobox."""
+    def __init__(self, parent, title, text, predefined_names, initialvalue=""): # (MODIFIED)
         self.text = text
         self.predefined_names = predefined_names
+        self.initialvalue = initialvalue # (NEW)
         super().__init__(parent, title)
+
     def body(self, master):
         ttk.Label(master, text=self.text).pack(pady=5)
-        # (MODIFIED) Use the new EntryWithRightClickMenu
         self.combo = ttk.Combobox(master, values=self.predefined_names, width=50)
         self.combo.pack(padx=10, pady=5)
-        return self.combo
+        self.combo.insert(0, self.initialvalue) # (NEW)
+        return self.combo # Set initial focus
+
     def apply(self):
         self.result = self.combo.get()
 
 # --- Config Persistence ---
 def load_config():
-    """Loads Google Sheet URL from config.json."""
-    global g_sheet_url
+    """Loads all settings from config.json."""
+    global g_sheet_url, TABNAME_SIFT_THRESHOLD, STATUS_SIFT_THRESHOLD
     try:
         if os.path.exists(CONFIG_FILE_PATH):
             with open(CONFIG_FILE_PATH, 'r', encoding='utf-8') as f:
@@ -258,16 +268,43 @@ def load_config():
                 if g_sheet_url_entry:
                     g_sheet_url_entry.delete(0, tk.END)
                     g_sheet_url_entry.insert(0, g_sheet_url)
+                TABNAME_SIFT_THRESHOLD = int(data.get("tabname_sift_threshold", 70))
+                STATUS_SIFT_THRESHOLD = int(data.get("status_sift_threshold", 15))
+                if tabname_threshold_entry:
+                    tabname_threshold_entry.delete(0, tk.END)
+                    tabname_threshold_entry.insert(0, str(TABNAME_SIFT_THRESHOLD))
+                if status_threshold_entry:
+                    status_threshold_entry.delete(0, tk.END)
+                    status_threshold_entry.insert(0, str(STATUS_SIFT_THRESHOLD))
+        else:
+            if tabname_threshold_entry:
+                tabname_threshold_entry.insert(0, "70")
+            if status_threshold_entry:
+                status_threshold_entry.insert(0, "15")
     except Exception as e:
         print(f"Error loading config: {e}")
         g_sheet_url = ""
+        TABNAME_SIFT_THRESHOLD = 70
+        STATUS_SIFT_THRESHOLD = 15
 
 def save_config():
-    """Saves Google Sheet URL to config.json."""
-    global g_sheet_url
+    """Saves all settings to config.json."""
+    global g_sheet_url, TABNAME_SIFT_THRESHOLD, STATUS_SIFT_THRESHOLD
     try:
+        try:
+            new_tab_thresh = int(tabname_threshold_entry.get())
+            new_stat_thresh = int(status_threshold_entry.get())
+        except ValueError:
+            messagebox.showerror(translations['error_threshold'][current_lang], translations['error_threshold_text'][current_lang])
+            return
+        TABNAME_SIFT_THRESHOLD = new_tab_thresh
+        STATUS_SIFT_THRESHOLD = new_stat_thresh
         g_sheet_url = g_sheet_url_entry.get()
-        data = {"g_sheet_url": g_sheet_url}
+        data = {
+            "g_sheet_url": g_sheet_url,
+            "tabname_sift_threshold": TABNAME_SIFT_THRESHOLD,
+            "status_sift_threshold": STATUS_SIFT_THRESHOLD
+        }
         with open(CONFIG_FILE_PATH, 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=4)
         update_status('status_config_saved')
@@ -329,6 +366,8 @@ def set_language(lang_code):
 
     # Settings Tab
     g_sheet_url_label.config(text=translations['g_sheet_url_label'][current_lang])
+    tabname_threshold_label.config(text=translations['tabname_threshold_label'][current_lang])
+    status_threshold_label.config(text=translations['status_threshold_label'][current_lang])
     g_sheet_save_button.config(text=translations['g_sheet_save_button'][current_lang])
     
     if not is_running:
@@ -458,18 +497,14 @@ def validate_data(data_results):
     """
     if not data_results:
         return "", "black"
-
     is_complete = True
     is_valid = True
-    
     for key, value in data_results.items():
         if value in ["N/A", "Error"]:
             is_complete = False
             break
-            
     if not is_complete:
         return translations['validation_incomplete'][current_lang], "red"
-        
     for key, value in data_results.items():
         try:
             num_val = float(value)
@@ -481,10 +516,8 @@ def validate_data(data_results):
                 break
         except (ValueError, TypeError):
             pass 
-            
     if not is_valid:
         return translations['validation_invalid'][current_lang], "orange"
-        
     return translations['validation_pass'][current_lang], "green"
 
 # --- Google Sheet Upload Logic ---
@@ -506,13 +539,11 @@ def send_data_to_google_sheet(tabname, data_results):
         sheetName = tabname.replace(".png", "")
         headers = ["Timestamp"] + list(data_results.keys())
         values = [datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")] + list(data_results.values())
-        
         payload = {
             "sheetName": sheetName,
             "headers": headers,
             "values": values
         }
-        
         threading.Thread(target=_send_data_worker, args=(g_sheet_url, payload), daemon=True).start()
     except Exception as e:
         root.after(0, update_status, 'status_error', f"GSheet formatting: {e}")
@@ -586,7 +617,7 @@ def perform_capture_task():
                 if match_name != "None":
                     data_results = extract_data_from_rois(crop_pil, match_name, (x, y))
                 status_text, status_color = validate_data(data_results)
-                if match_name != "None" and status_text == translations['validation_pass'][current_lang]:
+                if match_name != "None" and status_color == "green":
                     send_data_to_google_sheet(match_name, data_results)
                 final_results.append((crop_pil, match_name, (x, y), data_results, (status_text, status_color)))
         else:
@@ -596,7 +627,7 @@ def perform_capture_task():
             if match_name != "None":
                 data_results = extract_data_from_rois(crop_pil, match_name, (0, 0))
             status_text, status_color = validate_data(data_results)
-            if match_name != "None" and status_text == translations['validation_pass'][current_lang]:
+            if match_name != "None" and status_color == "green":
                 send_data_to_google_sheet(match_name, data_results)
             final_results.append((crop_pil, match_name, (0, 0), data_results, (status_text, status_color)))
 
@@ -928,12 +959,17 @@ def rename_gallery_item():
         if not selected_items: return
         old_filename = selected_items[0]
         old_path = os.path.join(TABNAME_DIR, old_filename)
-        new_filename = simpledialog.askstring(
+        # (MODIFIED) Use new dialog
+        dialog = AskROINameDialog(root,
             translations['rename_prompt_title'][current_lang],
             translations['rename_prompt_text'][current_lang],
-            initialvalue=old_filename, parent=root
+            PREDEFINED_TABNAME_NAMES,
+            initialvalue=old_filename.replace(".png", "")
         )
-        if new_filename and new_filename != old_filename:
+        new_filename = dialog.result
+        if new_filename: new_filename = new_filename.strip()
+            
+        if new_filename and new_filename != old_filename.replace(".png", ""):
             if not new_filename.endswith('.png'): new_filename += '.png'
             new_path = os.path.join(TABNAME_DIR, new_filename)
             if os.path.exists(new_path):
@@ -995,12 +1031,17 @@ def rename_roi_file():
         if not selected_items: return
         old_filename = selected_items[0]
         old_path = os.path.join(ROI_DIR, old_filename)
-        new_filename = simpledialog.askstring(
+        # (MODIFIED) Use new dialog
+        dialog = AskROINameDialog(root,
             translations['rename_prompt_title'][current_lang],
             translations['rename_prompt_text'][current_lang],
-            initialvalue=old_filename, parent=root
+            PREDEFINED_TABNAME_NAMES,
+            initialvalue=old_filename.replace(".json", "")
         )
-        if new_filename and new_filename != old_filename:
+        new_filename = dialog.result
+        if new_filename: new_filename = new_filename.strip()
+            
+        if new_filename and new_filename != old_filename.replace(".json", ""):
             if not new_filename.endswith('.json'): new_filename += '.json'
             new_path = os.path.join(ROI_DIR, new_filename)
             if os.path.exists(new_path):
@@ -1108,11 +1149,15 @@ def on_status_image_select(event):
 
 def create_status_folder():
     """Creates a new folder in pictures/status/"""
-    foldername = simpledialog.askstring(
+    # (MODIFIED) Use new dialog
+    dialog = AskROINameDialog(root,
         translations['create_folder_button'][current_lang],
         translations['rename_prompt_text'][current_lang],
-        parent=root
+        PREDEFINED_TABNAME_NAMES
     )
+    foldername = dialog.result
+    if foldername: foldername = foldername.strip()
+        
     if foldername:
         try:
             folder_path = os.path.join(STATUS_TEMPLATE_DIR, foldername)
@@ -1129,11 +1174,17 @@ def rename_status_folder():
         if not selected_items: return
         old_foldername = selected_items[0]
         old_path = os.path.join(STATUS_TEMPLATE_DIR, old_foldername)
-        new_foldername = simpledialog.askstring(
+        
+        # (MODIFIED) Use new dialog
+        dialog = AskROINameDialog(root,
             translations['rename_folder_button'][current_lang],
             translations['rename_prompt_text'][current_lang],
-            initialvalue=old_foldername, parent=root
+            PREDEFINED_TABNAME_NAMES,
+            initialvalue=old_foldername
         )
+        new_foldername = dialog.result
+        if new_foldername: new_foldername = new_foldername.strip()
+            
         if new_foldername and new_foldername != old_foldername:
             new_path = os.path.join(STATUS_TEMPLATE_DIR, new_foldername)
             if os.path.exists(new_path):
@@ -1181,11 +1232,16 @@ def start_add_status_image():
     if selector.box:
         try:
             cropped_image = selector.background_image.crop(selector.box)
-            imagename = simpledialog.askstring(
+            
+            # (MODIFIED) Use new dialog
+            dialog = AskROINameDialog(root,
                 translations['add_image_prompt_title'][current_lang],
                 translations['add_image_prompt_text'][current_lang],
-                parent=root
+                PREDEFINED_STATUS_NAMES
             )
+            imagename = dialog.result
+            if imagename: imagename = imagename.strip()
+                
             if not imagename:
                 return
             if not imagename.endswith('.png'):
@@ -1207,12 +1263,18 @@ def rename_status_image():
         foldername = folder_items[0]
         old_filename = image_items[0]
         old_path = os.path.join(STATUS_TEMPLATE_DIR, foldername, old_filename)
-        new_filename = simpledialog.askstring(
+        
+        # (MODIFIED) Use new dialog
+        dialog = AskROINameDialog(root,
             translations['rename_image_button'][current_lang],
             translations['rename_prompt_text'][current_lang],
-            initialvalue=old_filename, parent=root
+            PREDEFINED_STATUS_NAMES,
+            initialvalue=old_filename.replace(".png", "")
         )
-        if new_filename and new_filename != old_filename:
+        new_filename = dialog.result
+        if new_filename: new_filename = new_filename.strip()
+            
+        if new_filename and new_filename != old_filename.replace(".png", ""):
             if not new_filename.endswith('.png'): new_filename += '.png'
             new_path = os.path.join(STATUS_TEMPLATE_DIR, foldername, new_filename)
             if os.path.exists(new_path):
@@ -1295,7 +1357,7 @@ settings_frame = ttk.Frame(capture_tab, padding=(0, 0, 0, 10))
 settings_frame.pack(fill=tk.X)
 interval_label = ttk.Label(settings_frame)
 interval_label.pack(side=tk.LEFT, padx=(0, 5))
-interval_entry = ttk.Entry(settings_frame, width=5, font=(font_family, 10))
+interval_entry = EntryWithRightClickMenu(settings_frame, width=5, font=(font_family, 10))
 interval_entry.pack(side=tk.LEFT, padx=5)
 interval_entry.insert(0, "5") 
 start_button = ttk.Button(settings_frame, command=start_capture)
@@ -1414,17 +1476,33 @@ status_preview_label.pack(fill=tk.BOTH, expand=True, pady=5)
 settings_tab = ttk.Frame(notebook, padding=10)
 notebook.add(settings_tab, text="Settings")
 
+# -- (NEW) SIFT Thresholds Frame --
+sift_frame = ttk.Frame(settings_tab)
+sift_frame.pack(fill=tk.X, pady=10)
+
+tabname_threshold_label = ttk.Label(sift_frame, text="Tabname SIFT Threshold:", anchor=tk.W)
+tabname_threshold_label.pack(fill=tk.X)
+tabname_threshold_entry = EntryWithRightClickMenu(sift_frame, width=10) # Use new class
+tabname_threshold_entry.pack(anchor=tk.W, pady=(5, 10))
+
+status_threshold_label = ttk.Label(sift_frame, text="Status SIFT Threshold:", anchor=tk.W)
+status_threshold_label.pack(fill=tk.X)
+status_threshold_entry = EntryWithRightClickMenu(sift_frame, width=10) # Use new class
+status_threshold_entry.pack(anchor=tk.W, pady=(5, 10))
+
+ttk.Separator(settings_tab, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=10)
+
+# -- GSheet Frame --
 g_sheet_frame = ttk.Frame(settings_tab)
 g_sheet_frame.pack(fill=tk.X, pady=10)
 
 g_sheet_url_label = ttk.Label(g_sheet_frame, text="Google Sheet Web App URL:", anchor=tk.W)
 g_sheet_url_label.pack(fill=tk.X)
 
-# (MODIFIED) Use the new EntryWithRightClickMenu
-g_sheet_url_entry = EntryWithRightClickMenu(g_sheet_frame, width=80) 
+g_sheet_url_entry = EntryWithRightClickMenu(g_sheet_frame, width=80) # Use new class
 g_sheet_url_entry.pack(fill=tk.X, pady=(5, 10))
 
-g_sheet_save_button = ttk.Button(g_sheet_frame, command=save_config)
+g_sheet_save_button = ttk.Button(settings_tab, command=save_config) # (MODIFIED) Moved button
 g_sheet_save_button.pack(anchor=tk.W)
 
 
@@ -1441,5 +1519,5 @@ refresh_roi_file_list()
 refresh_status_folders()
 on_gallery_item_select(None)
 on_roi_set_select(None)
-load_config() # Load the saved URL
+load_config() # (NEW) Load all saved settings
 root.mainloop()
