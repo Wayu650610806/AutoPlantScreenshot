@@ -867,7 +867,7 @@ def perform_capture_task():
         if minimize_on_start_var.get():
             time.sleep(0.5) # Give 0.5s for window to minimize before capture
             
-        image = ImageGrab.grab()
+        image = ImageGrab.grab(all_screens=True)
         selected_index = split_method_combo.current()
         method_key = SPLIT_ORDER[selected_index]
         split_function = SPLIT_OPTIONS[method_key]['func']
@@ -1086,11 +1086,12 @@ def update_gui_with_sift_results(sift_results):
     now_time = datetime.datetime.now().strftime('%H:%M:%S')
     update_status('status_captured', now_time)
 
+
 # --- Region Capture & ROI Logic ---
 class RegionSelector:
     def __init__(self, parent):
         self.parent = parent
-        self.background_image = ImageGrab.grab()
+        self.background_image = ImageGrab.grab(all_screens=True)
         self.selector_window = tk.Toplevel(parent)
         self.selector_window.attributes('-fullscreen', True)
         self.selector_window.attributes('-alpha', 0.3)
