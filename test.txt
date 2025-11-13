@@ -1,5 +1,0 @@
-tempt : 324
-% : 99
-ppm : 21
-status : Cooling
-new : 1901
