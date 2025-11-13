@@ -15,6 +15,33 @@ import easyocr # For OCR
 import shutil # For deleting folders
 import requests # For sending data
 
+# --- Base Path Logic ---
+def get_base_path():
+    """Gets the base path, whether running as .py or frozen .exe"""
+    if getattr(sys, 'frozen', False):
+        # We are running in a bundle (e.g., PyInstaller)
+        base_path = os.path.dirname(sys.executable)
+    else:
+        # We are running in a normal Python environment
+        base_path = os.path.dirname(os.path.abspath(__file__))
+    return base_path
+
+# --- Global Paths & Constants ---
+# (!!! MUST BE DEFINED *BEFORE* EASYOCR INIT !!!)
+BASE_PATH = get_base_path()
+MODEL_STORAGE_DIR = os.path.join(BASE_PATH, 'model') # Path for EasyOCR models
+TABNAME_DIR = os.path.join(BASE_PATH, "pictures", "tabname") 
+STATUS_TEMPLATE_DIR = os.path.join(BASE_PATH, "pictures", "status")
+ROI_DIR = os.path.join(BASE_PATH, "rois")
+CONFIG_FILE_PATH = os.path.join(BASE_PATH, "config.json")
+
+# Create all necessary folders on startup
+os.makedirs(MODEL_STORAGE_DIR, exist_ok=True) 
+os.makedirs(TABNAME_DIR, exist_ok=True)
+os.makedirs(STATUS_TEMPLATE_DIR, exist_ok=True)
+os.makedirs(ROI_DIR, exist_ok=True)
+
+
 # --- SIFT Global Initialization ---
 try:
     sift = cv2.SIFT_create() # (MODIFIED) แก้จาก cv เป็น cv2
@@ -28,32 +55,18 @@ except Exception as e:
     sys.exit()
 
 # --- EasyOCR Initialization ---
+# (!!! NOW IT CAN FIND MODEL_STORAGE_DIR !!!)
 try:
     print("Loading EasyOCR Reader... (This may take a moment on first run)")
-    ocr_reader = easyocr.Reader(['en']) 
+
+    # (!!! MODIFIED !!!) ส่ง path ของ model ที่เรากำหนดเองเข้าไป
+    ocr_reader = easyocr.Reader(['en'], model_storage_directory=MODEL_STORAGE_DIR) 
+
     print("EasyOCR Reader loaded.")
 except Exception as e:
     messagebox.showerror("EasyOCR Error", f"Could not initialize EasyOCR.\n{e}")
     sys.exit()
 OCR_ALLOWLIST = '-.0123456789'
-
-# --- Base Path Logic ---
-def get_base_path():
-    if getattr(sys, 'frozen', False):
-        base_path = os.path.dirname(sys.executable)
-    else:
-        base_path = os.path.dirname(os.path.abspath(__file__))
-    return base_path
-
-# --- Global Paths & Constants ---
-BASE_PATH = get_base_path()
-TABNAME_DIR = os.path.join(BASE_PATH, "pictures", "tabname") 
-STATUS_TEMPLATE_DIR = os.path.join(BASE_PATH, "pictures", "status")
-ROI_DIR = os.path.join(BASE_PATH, "rois")
-CONFIG_FILE_PATH = os.path.join(BASE_PATH, "config.json")
-os.makedirs(TABNAME_DIR, exist_ok=True)
-os.makedirs(STATUS_TEMPLATE_DIR, exist_ok=True)
-os.makedirs(ROI_DIR, exist_ok=True)
 
 # --- Predefined ROI Names ---
 PREDEFINED_ROI_NAMES = [

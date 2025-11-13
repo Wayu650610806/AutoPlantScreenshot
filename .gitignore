@@ -1,0 +1,14 @@
+# Python virtual environment
+venv/
+.venv/
+
+# PyInstaller files
+build/
+dist/
+*.spec
+
+# IDE/Cache files
+__pycache__/
+.vscode/
+
+model

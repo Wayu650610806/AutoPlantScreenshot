@@ -1,5 +1,9 @@
 {
     "g_sheet_url": "https://script.google.com/macros/s/AKfycbxNhEw2k3vauRqWlNor7VgwLxHFfyJNzde6PZwrPjhra7DwYoxfk3-NFR7qjq64Krw/exec",
     "tabname_sift_threshold": 70,
-    "status_sift_threshold": 15
+    "status_sift_threshold": 15,
+    "ocr_scale_factor": 4,
+    "ocr_clahe_clip": 2.0,
+    "ocr_median_ksize": 3,
+    "ocr_opening_ksize": 2
 }
