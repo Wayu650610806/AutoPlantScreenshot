@@ -1088,18 +1088,50 @@ def update_gui_with_sift_results(sift_results):
 
 
 # --- Region Capture & ROI Logic ---
+# (!!! START: นี่คือคลาสที่แก้ไขทั้งหมด !!!)
 class RegionSelector:
     def __init__(self, parent):
         self.parent = parent
         self.background_image = ImageGrab.grab(all_screens=True)
         self.selector_window = tk.Toplevel(parent)
-        self.selector_window.attributes('-fullscreen', True)
+        
+        # --- (START) นี่คือจุดที่แก้ไข ---
+        # เราจะบังคับให้หน้าต่างขยายเต็มทุกจอเอง โดยไม่ใช้ -fullscreen
+        try:
+            # ใช้ windll ที่ import ไว้แล้วที่ด้านบนของไฟล์
+            SM_XVIRTUALSCREEN = 76
+            SM_YVIRTUALSCREEN = 77
+            SM_CXVIRTUALSCREEN = 78
+            SM_CYVIRTUALSCREEN = 79
+
+            screen_x = windll.user32.GetSystemMetrics(SM_XVIRTUALSCREEN)
+            screen_y = windll.user32.GetSystemMetrics(SM_YVIRTUALSCREEN)
+            screen_width = windll.user32.GetSystemMetrics(SM_CXVIRTUALSCREEN)
+            screen_height = windll.user32.GetSystemMetrics(SM_CYVIRTUALSCREEN)
+            
+            # สร้าง geometry string: "widthxheight+x+y"
+            # (x, y อาจเป็นค่าติดลบ ถ้าจอรองอยู่ด้านซ้ายของจอหลัก)
+            geometry_string = f"{screen_width}x{screen_height}+{screen_x}+{screen_y}"
+            
+            self.selector_window.geometry(geometry_string)
+            self.selector_window.overrideredirect(True) # ลบขอบหน้าต่างและ title bar
+        except Exception as e:
+            print(f"Virtual screen detection failed, falling back to primary: {e}")
+            self.selector_window.attributes('-fullscreen', True) # ใช้วิธีเดิมถ้าพลาด
+        # --- (END) นี่คือจุดที่แก้ไข ---
+
         self.selector_window.attributes('-alpha', 0.3)
-        self.selector_window.wait_visibility(self.selector_window)
-        self.canvas = tk.Canvas(self.selector_window, cursor="cross")
+        
+        # (แก้ไข) เพิ่ม borderwidth=0 และ highlightthickness=0
+        self.canvas = tk.Canvas(self.selector_window, cursor="cross", borderwidth=0, highlightthickness=0) 
         self.canvas.pack(fill=tk.BOTH, expand=True)
+        
         self.tk_background_image = ImageTk.PhotoImage(self.background_image)
+        
+        # ภาพพื้นหลังจะถูกวาดที่ (0, 0) ของ canvas
+        # ซึ่งตอนนี้ canvas ก็มีขนาดเท่ากับ virtual desktop ทั้งหมดแล้ว
         self.canvas.create_image(0, 0, image=self.tk_background_image, anchor=tk.NW)
+        
         self.rect = None
         self.start_x = 0
         self.start_y = 0
@@ -1107,21 +1139,29 @@ class RegionSelector:
         self.canvas.bind("<ButtonPress-1>", self.on_press)
         self.canvas.bind("<B1-Motion>", self.on_motion)
         self.canvas.bind("<ButtonRelease-1>", self.on_release)
+
     def on_press(self, event):
         self.start_x = self.canvas.canvasx(event.x)
         self.start_y = self.canvas.canvasy(event.y)
         if not self.rect:
             self.rect = self.canvas.create_rectangle(0, 0, 1, 1, outline='red', width=2, fill='white')
             self.canvas.itemconfigure(self.rect, stipple="gray50") 
+            
     def on_motion(self, event):
         cur_x = self.canvas.canvasx(event.x)
         cur_y = self.canvas.canvasy(event.y)
         self.canvas.coords(self.rect, self.start_x, self.start_y, cur_x, cur_y)
+        
     def on_release(self, event):
         end_x = self.canvas.canvasx(event.x)
         end_y = self.canvas.canvasy(event.y)
+        
+        # พิกัด box นี้จะสัมพันธ์กับ (0,0) ของ canvas 
+        # ซึ่งก็คือ (0,0) ของ background_image พอดี
         self.box = (int(min(self.start_x, end_x)), int(min(self.start_y, end_y)), int(max(self.start_x, end_x)), int(max(self.start_y, end_y)))
         self.selector_window.destroy()
+# (!!! END: สิ้นสุดคลาสที่แก้ไข !!!)
+
 
 def start_region_capture():
     """Called by 'Capture Tabname' button."""
