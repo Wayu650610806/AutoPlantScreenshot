@@ -122,7 +122,7 @@ SPLIT_ORDER = ["NONE", "P1_34_34_16_16", "P2_25x4", "P3_25_25_50", "P4_50_50"]
 
 # --- Language Data (คลังคำศัพท์) ---
 translations = {
-    'app_title': {'en': 'Capture Tool v0.16 (Minimize)', 'ja': 'キャプチャーツール v0.16 (最小化)'}, 
+    'app_title': {'en': 'Capture Tool v0.19 (Minimize)', 'ja': 'キャプチャーツール v0.19 (最小化)'}, # (MODIFIED)
     'tab_capture': {'en': 'Auto-Capture', 'ja': '自動キャプチャ'},
     'tab_gallery': {'en': 'Tabname', 'ja': 'タブ名'}, 
     'tab_roi_sets': {'en': 'ROI Sets', 'ja': 'ROIセット'},
@@ -178,7 +178,7 @@ translations = {
     'tabname_threshold_label': {'en': 'Tabname SIFT Threshold (e.g., 70):', 'ja': 'タブ名SIFTしきい値 (例: 70):'},
     'status_threshold_label': {'en': 'Status SIFT Threshold (e.g., 15):', 'ja': 'ステータスSIFTしきい値 (例: 15):'},
     
-    # (NEW) Settings Tab - OCR
+    # (MODIFIED) Settings Tab - OCR Preprocessing
     'ocr_settings_header': {'en': 'OCR Preprocessing Settings (Advanced)', 'ja': 'OCR前処理設定 (詳細)'},
     'ocr_scale_label': {'en': '1. Upscale Factor (e.g., 4):', 'ja': '1. アップスケール係数 (例: 4):'},
     'ocr_scale_help': {'en': 'Larger = slower, but better for tiny text.', 'ja': '大きいほど低速だが、小さい文字に有効。'},
@@ -188,11 +188,24 @@ translations = {
     'ocr_median_help': {'en': 'Smooths noise. MUST be an ODD number > 1 (3, 5, 7).', 'ja': 'ノイズを平滑化。1より大きい奇数 (3, 5, 7) である必要があります。'},
     'ocr_opening_label': {'en': '4. Opening Kernel ksize (e.g., 2):', 'ja': '4. オープニングカーネル ksize (例: 2):'},
     'ocr_opening_help': {'en': 'Removes small white dots. Higher = removes more (e.g., 3).', 'ja': '小さい白い点を除去。大きい = より多く除去 (例: 3)。'},
-    # (NEW) OCR Settings Labels
-    'ocr_dilate_label': {'en': '5. Dilate Kernel ksize (e.g., 2):', 'ja': '5. 膨張カーネル ksize (例: 2):'},
-    'ocr_dilate_help': {'en': 'Expands white spots. Used for "%" (開度). Must be > 0.', 'ja': '白い点を拡大。パーセント(開度)に使用。0より大きい必要があります。'},
-    'ocr_erode_label': {'en': '6. Erode Kernel ksize (e.g., 2):', 'ja': '6. 収縮カーネル ksize (例: 2):'},
-    'ocr_erode_help': {'en': 'Shrinks white spots. Used for "℃" (温度). Must be > 0.', 'ja': '白い点を収縮。温度(℃)に使用。0より大きい必要があります。'},
+    
+    # (NEW) Conditional Morphology Kernel Settings
+    'ocr_kernel_settings_header': {'en': 'Morphology Kernel Settings', 'ja': 'モルフォロジー・カーネル設定'},
+    'ocr_dilate_label': {'en': '1. Dilate/Thicken Kernel ksize (e.g., 2):', 'ja': '1. 膨張/หนาขึ้น カーネル ksize (例: 2):'}, # Now refers to the Thickening action
+    'ocr_dilate_help': {'en': 'Kernel size for thickening dark text (ROI targets set below).', 'ja': '濃い文字を太らせるためのカーネルサイズ (ROIターゲットは下記参照)。'},
+    'ocr_erode_label': {'en': '2. Erode/Thin Kernel ksize (e.g., 2):', 'ja': '2. 収縮/บางลง カーネル ksize (例: 2):'}, # Now refers to the Thinning action
+    'ocr_erode_help': {'en': 'Kernel size for thinning dark text (ROI targets set below).', 'ja': '濃い文字を細くするためのカーネルサイズ (ROIターゲットは下記参照)。'},
+    
+    # (NEW) Conditional Morphology Target Selection UI
+    'ocr_targets_header': {'en': 'Conditional Morphology Target Selection', 'ja': '条件付き前処理ターゲット選択'},
+    'available_roi_label': {'en': 'Available ROI Templates:', 'ja': '利用可能なROIテンプレート:'},
+    'dilate_targets_label': {'en': 'Targets for Dilate (Thickening):', 'ja': '膨張 (太らせる) ターゲット:'},
+    'erode_targets_label': {'en': 'Targets for Erode (Thinning):', 'ja': '収縮 (細くする) ターゲット:'},
+    'add_dilate_button': {'en': '-> Add to Thickening', 'ja': '-> 太らせるに追加'},
+    'remove_dilate_button': {'en': '<- Remove', 'ja': '<- 削除'},
+    'add_erode_button': {'en': '-> Add to Thinning', 'ja': '-> 細くするに追加'},
+    'remove_erode_button': {'en': '<- Remove', 'ja': '<- 削除'},
+    'refresh_targets_button': {'en': 'Refresh ROI List', 'ja': 'ROIリストを更新'},
     
     # OCR Debug Tab (MODIFIED for 2x2 grid)
     'ocr_refresh_button': {'en': 'Load Latest Capture Data', 'ja': '最新のキャプチャを読込'},
@@ -200,7 +213,7 @@ translations = {
     'ocr_roi_label': {'en': 'Select ROI to Inspect:', 'ja': '検査するROIを選択:'},
     'ocr_raw_label': {'en': 'Raw ROI', 'ja': '生ROI'},
     'ocr_gray_label': {'en': 'Grayscale', 'ja': 'グレースケール'},
-    'ocr_contrast_label': {'en': 'Conditional Processing', 'ja': '条件付き前処理'}, # (MODIFIED)
+    'ocr_contrast_label': {'en': 'Conditional Processing', 'ja': '条件付き前処理'},
     'ocr_final_label': {'en': 'Final (Threshold)', 'ja': '最終 (しきい値処理)'},
     'ocr_result_label': {'en': 'OCR Result:', 'ja': 'OCR結果:'},
     'ocr_no_data': {'en': 'No data. Run Auto-Capture first.', 'ja': 'データなし。自動キャプチャを実行してください。'},
@@ -233,7 +246,7 @@ translations = {
     
     # (NEW) Error messages
     'error_ocr_settings': {'en': 'Invalid OCR Settings', 'ja': '無効なOCR設定'},
-    'error_ocr_text': {'en': 'All OCR values must be numbers.\nMedian ksize must be an ODD integer > 1.\nAll other values (Scale, CLAHE, Opening, Dilate, Erode) must be > 0.', 'ja': 'OCR値はすべて数値である必要があります。\nメディアン ksize は1より大きい奇数である必要があります。\n他のすべての値 (スケール, CLAHE, オープニング, 膨張, 収縮) は0より大きい必要があります。'},
+    'error_ocr_text': {'en': 'All OCR values must be numbers.\nMedian ksize must be an ODD integer > 1.\nAll other ksize values must be > 0.', 'ja': 'OCR値はすべて数値である必要があります。\nメดิアン ksize は1よりใหญ่ขึ้น奇数である必要があります。\n他のすべてのカーネルサイズ値は0よりใหญ่ขึ้น必要があります。'},
     
     'confirm_close_title': {'en': 'Confirm Exit', 'ja': '終了確認'},
     'confirm_close_message': {'en': 'Auto-Capture is running. Are you sure you want to stop and exit?', 'ja': '自動キャプチャが実行中です。停止して終了しますか？'},
@@ -302,14 +315,22 @@ OCR_SCALE_FACTOR = 4
 OCR_CLAHE_CLIP = 2.0
 OCR_MEDIAN_KSIZE = 3
 OCR_OPENING_KSIZE = 2
-OCR_DILATE_KSIZE = 2  # (NEW)
-OCR_ERODE_KSIZE = 2   # (NEW)
+OCR_DILATE_KSIZE = 2  
+OCR_ERODE_KSIZE = 2   
+OCR_DILATE_TARGETS = ["乾溜空気弁A_開度_%", "乾溜空気弁B_開度_%", "乾溜空気弁C_開度_%"] # (MODIFIED Default)
+OCR_ERODE_TARGETS = ["燃焼炉_温度_℃"] # (MODIFIED Default)
+
 ocr_scale_entry = None
 ocr_clahe_entry = None
 ocr_median_entry = None
 ocr_opening_entry = None
-ocr_dilate_entry = None # (NEW)
-ocr_erode_entry = None  # (NEW)
+ocr_dilate_entry = None 
+ocr_erode_entry = None  
+
+# (NEW UI Globals for Target Selection)
+dilate_target_listbox = None
+erode_target_listbox = None
+available_roi_listbox = None
 
 # --- Custom Entry with Right-Click ---
 class EntryWithRightClickMenu(ttk.Entry):
@@ -395,12 +416,12 @@ class HorizontalScrolledFrame(ttk.Frame):
         hscanvas.create_window((0, 0), window=self.interior, anchor="nw")
 
 # --- Config Persistence ---
-# --- (MODIFIED) - เพิ่มการโหลด/บันทึก OCR Settings ---
+# --- (MODIFIED) - เพิ่มการโหลด/บันทึก OCR Settings & TARGETS ---
 def load_config():
     """(MODIFIED) Loads all settings from config.json."""
     global g_sheet_url, TABNAME_SIFT_THRESHOLD, STATUS_SIFT_THRESHOLD, \
            OCR_SCALE_FACTOR, OCR_CLAHE_CLIP, OCR_MEDIAN_KSIZE, OCR_OPENING_KSIZE, \
-           OCR_DILATE_KSIZE, OCR_ERODE_KSIZE # (NEW)
+           OCR_DILATE_KSIZE, OCR_ERODE_KSIZE, OCR_DILATE_TARGETS, OCR_ERODE_TARGETS # (MODIFIED)
     try:
         if os.path.exists(CONFIG_FILE_PATH):
             with open(CONFIG_FILE_PATH, 'r', encoding='utf-8') as f:
@@ -427,10 +448,17 @@ def load_config():
                 OCR_MEDIAN_KSIZE = int(data.get("ocr_median_ksize", 3))
                 OCR_OPENING_KSIZE = int(data.get("ocr_opening_ksize", 2))
                 
-                # (NEW) Conditional Morphology Settings
+                # (NEW) Conditional Morphology Settings (ksize)
                 OCR_DILATE_KSIZE = int(data.get("ocr_dilate_ksize", 2))
                 OCR_ERODE_KSIZE = int(data.get("ocr_erode_ksize", 2))
                 
+                # (NEW) Conditional Morphology Targets
+                default_targets_dilate = ["乾溜空気弁A_開度_%", "乾溜空気弁B_開度_%", "乾溜空気弁C_開度_%"]
+                default_targets_erode = ["燃焼炉_温度_℃"]
+                OCR_DILATE_TARGETS = data.get("ocr_dilate_targets", default_targets_dilate)
+                OCR_ERODE_TARGETS = data.get("ocr_erode_targets", default_targets_erode)
+
+                # Update UI Elements
                 if ocr_scale_entry:
                     ocr_scale_entry.delete(0, tk.END)
                     ocr_scale_entry.insert(0, str(OCR_SCALE_FACTOR))
@@ -449,6 +477,10 @@ def load_config():
                 if ocr_erode_entry:
                     ocr_erode_entry.delete(0, tk.END)
                     ocr_erode_entry.insert(0, str(OCR_ERODE_KSIZE))
+                
+                # (NEW) Refresh target listboxes if they exist
+                if available_roi_listbox:
+                    refresh_ocr_target_listboxes()
 
         else:
             # (NEW) Load defaults into UI if no config file
@@ -472,14 +504,16 @@ def load_config():
         OCR_CLAHE_CLIP = 2.0
         OCR_MEDIAN_KSIZE = 3
         OCR_OPENING_KSIZE = 2
-        OCR_DILATE_KSIZE = 2 # (NEW)
-        OCR_ERODE_KSIZE = 2  # (NEW)
+        OCR_DILATE_KSIZE = 2 
+        OCR_ERODE_KSIZE = 2  
+        OCR_DILATE_TARGETS = ["乾溜空気弁A_開度_%", "乾溜空気弁B_開度_%", "乾溜空気弁C_開度_%"]
+        OCR_ERODE_TARGETS = ["燃焼炉_温度_℃"]
 
 def save_config():
     """(MODIFIED) Saves all settings to config.json with validation."""
     global g_sheet_url, TABNAME_SIFT_THRESHOLD, STATUS_SIFT_THRESHOLD, \
            OCR_SCALE_FACTOR, OCR_CLAHE_CLIP, OCR_MEDIAN_KSIZE, OCR_OPENING_KSIZE, \
-           OCR_DILATE_KSIZE, OCR_ERODE_KSIZE # (NEW)
+           OCR_DILATE_KSIZE, OCR_ERODE_KSIZE, OCR_DILATE_TARGETS, OCR_ERODE_TARGETS # (MODIFIED)
     try:
         # 1. Validate SIFT thresholds
         try:
@@ -496,7 +530,7 @@ def save_config():
             new_median = int(ocr_median_entry.get())
             new_opening = int(ocr_opening_entry.get())
             
-            # (NEW) Conditional Morphology validation
+            # (NEW) Conditional Morphology validation (ksize)
             new_dilate = int(ocr_dilate_entry.get())
             new_erode = int(ocr_erode_entry.get())
             
@@ -522,9 +556,15 @@ def save_config():
         OCR_MEDIAN_KSIZE = new_median
         OCR_OPENING_KSIZE = new_opening
         
-        # (NEW) Conditional Morphology updates
+        # (NEW) Conditional Morphology updates (ksize and targets)
         OCR_DILATE_KSIZE = new_dilate
         OCR_ERODE_KSIZE = new_erode
+        
+        # Update targets from UI listboxes
+        if dilate_target_listbox:
+            OCR_DILATE_TARGETS = list(dilate_target_listbox.get(0, tk.END))
+        if erode_target_listbox:
+            OCR_ERODE_TARGETS = list(erode_target_listbox.get(0, tk.END))
 
         g_sheet_url = g_sheet_url_entry.get()
         
@@ -537,13 +577,15 @@ def save_config():
             "ocr_clahe_clip": OCR_CLAHE_CLIP,
             "ocr_median_ksize": OCR_MEDIAN_KSIZE,
             "ocr_opening_ksize": OCR_OPENING_KSIZE,
-            "ocr_dilate_ksize": OCR_DILATE_KSIZE, # (NEW)
-            "ocr_erode_ksize": OCR_ERODE_KSIZE    # (NEW)
+            "ocr_dilate_ksize": OCR_DILATE_KSIZE, 
+            "ocr_erode_ksize": OCR_ERODE_KSIZE,
+            "ocr_dilate_targets": OCR_DILATE_TARGETS, # (NEW)
+            "ocr_erode_targets": OCR_ERODE_TARGETS    # (NEW)
         }
         
         # 5. Save to file
         with open(CONFIG_FILE_PATH, 'w', encoding='utf-8') as f:
-            json.dump(data, f, indent=4)
+            json.dump(data, f, indent=4, ensure_ascii=False)
         update_status('status_config_saved')
         
     except Exception as e:
@@ -584,7 +626,7 @@ def set_language(lang_code):
     gallery_rename_button.config(text=translations['gallery_rename_button'][current_lang])
     gallery_delete_button.config(text=translations['gallery_delete_button'][current_lang])
     if not gallery_image_list.selection():
-        gallery_preview_label.config(image='', text=translations['gallery_placeholder'][current_lang])
+        gallery_preview_label.config(text=translations['gallery_placeholder'][current_lang], image='')
         
     # ROI Set Tab
     roi_set_list.heading("#0", text=translations['roi_set_list_header'][current_lang])
@@ -610,7 +652,7 @@ def set_language(lang_code):
     status_threshold_label.config(text=translations['status_threshold_label'][current_lang])
     g_sheet_save_button.config(text=translations['g_sheet_save_button'][current_lang])
     
-    # (NEW) OCR Settings Labels
+    # (MODIFIED) OCR Settings Labels
     ocr_settings_header.config(text=translations['ocr_settings_header'][current_lang])
     ocr_scale_label.config(text=translations['ocr_scale_label'][current_lang])
     ocr_scale_help.config(text=translations['ocr_scale_help'][current_lang])
@@ -620,10 +662,22 @@ def set_language(lang_code):
     ocr_median_help.config(text=translations['ocr_median_help'][current_lang])
     ocr_opening_label.config(text=translations['ocr_opening_label'][current_lang])
     ocr_opening_help.config(text=translations['ocr_opening_help'][current_lang])
+    
+    ocr_kernel_settings_header.config(text=translations['ocr_kernel_settings_header'][current_lang]) # (NEW)
     ocr_dilate_label.config(text=translations['ocr_dilate_label'][current_lang])
     ocr_dilate_help.config(text=translations['ocr_dilate_help'][current_lang])
     ocr_erode_label.config(text=translations['ocr_erode_label'][current_lang])
     ocr_erode_help.config(text=translations['ocr_erode_help'][current_lang])
+    
+    ocr_targets_header.config(text=translations['ocr_targets_header'][current_lang]) # (NEW)
+    available_roi_label.config(text=translations['available_roi_label'][current_lang]) # (NEW)
+    dilate_targets_label.config(text=translations['dilate_targets_label'][current_lang]) # (NEW)
+    erode_targets_label.config(text=translations['erode_targets_label'][current_lang]) # (NEW)
+    add_dilate_button.config(text=translations['add_dilate_button'][current_lang]) # (NEW)
+    remove_dilate_button.config(text=translations['remove_dilate_button'][current_lang]) # (NEW)
+    add_erode_button.config(text=translations['add_erode_button'][current_lang]) # (NEW)
+    remove_erode_button.config(text=translations['remove_erode_button'][current_lang]) # (NEW)
+    refresh_targets_button.config(text=translations['refresh_targets_button'][current_lang]) # (NEW)
     
     # OCR Debug Tab (MODIFIED for 2x2 grid)
     ocr_refresh_btn.config(text=translations['ocr_refresh_button'][current_lang])
@@ -631,7 +685,7 @@ def set_language(lang_code):
     ocr_roi_label.config(text=translations['ocr_roi_label'][current_lang])
     ocr_raw_frame_label.config(text=translations['ocr_raw_label'][current_lang])
     ocr_gray_frame_label.config(text=translations['ocr_gray_label'][current_lang]) 
-    ocr_contrast_frame_label.config(text=translations['ocr_contrast_label'][current_lang]) # (MODIFIED) 
+    ocr_contrast_frame_label.config(text=translations['ocr_contrast_label'][current_lang]) 
     ocr_final_frame_label.config(text=translations['ocr_final_label'][current_lang]) 
     ocr_result_text_label.config(text=translations['ocr_result_label'][current_lang])
     
@@ -642,10 +696,81 @@ def set_language(lang_code):
     else:
         interval = interval_entry.get()
         update_status('status_running', interval)
+    
+    refresh_ocr_target_listboxes() # (NEW) Ensure listboxes are refreshed with correct language/data
 
 def toggle_language():
     if current_lang == 'en': set_language('ja')
     else: set_language('en')
+
+# --- Helper functions for Target List Management ---
+def refresh_ocr_target_listboxes():
+    """Populates the available ROI listbox and selected lists."""
+    global OCR_DILATE_TARGETS, OCR_ERODE_TARGETS
+
+    if not available_roi_listbox or not dilate_target_listbox or not erode_target_listbox:
+        return
+
+    # 1. Clear all lists
+    available_roi_listbox.delete(0, tk.END)
+    dilate_target_listbox.delete(0, tk.END)
+    erode_target_listbox.delete(0, tk.END)
+
+    # 2. Ensure targets are unique (cannot be in both Dilate and Erode)
+    all_targets = set(OCR_DILATE_TARGETS) | set(OCR_ERODE_TARGETS)
+    
+    # 3. Separate targets from non-targets
+    available_rois = [name for name in PREDEFINED_ROI_NAMES if name not in all_targets]
+    
+    # Re-filter the global targets based on PREDEFINED list to keep the UI clean
+    OCR_DILATE_TARGETS = sorted([name for name in OCR_DILATE_TARGETS if name in PREDEFINED_ROI_NAMES])
+    OCR_ERODE_TARGETS = sorted([name for name in OCR_ERODE_TARGETS if name in PREDEFINED_ROI_NAMES])
+
+    # 4. Populate lists
+    for name in sorted(available_rois):
+        available_roi_listbox.insert(tk.END, name)
+    for name in OCR_DILATE_TARGETS:
+        dilate_target_listbox.insert(tk.END, name)
+    for name in OCR_ERODE_TARGETS:
+        erode_target_listbox.insert(tk.END, name)
+
+def _move_roi_item(source_listbox, target_type):
+    """Handles moving selected items between listboxes."""
+    global OCR_DILATE_TARGETS, OCR_ERODE_TARGETS
+    
+    selected_indices = source_listbox.curselection()
+    if not selected_indices: return
+
+    selected_items = [source_listbox.get(i) for i in selected_indices]
+
+    if source_listbox == available_roi_listbox:
+        # Moving FROM available TO target list
+        if target_type == 'dilate':
+            # Remove from all other lists
+            OCR_ERODE_TARGETS = [name for name in OCR_ERODE_TARGETS if name not in selected_items]
+            OCR_DILATE_TARGETS.extend(selected_items)
+        elif target_type == 'erode':
+            # Remove from all other lists
+            OCR_DILATE_TARGETS = [name for name in OCR_DILATE_TARGETS if name not in selected_items]
+            OCR_ERODE_TARGETS.extend(selected_items)
+    else:
+        # Moving FROM target list TO available
+        if target_type == 'dilate':
+            OCR_DILATE_TARGETS = [name for name in OCR_DILATE_TARGETS if name not in selected_items]
+        elif target_type == 'erode':
+            OCR_ERODE_TARGETS = [name for name in OCR_ERODE_TARGETS if name not in selected_items]
+
+    # Re-sort and refresh lists (simple solution)
+    refresh_ocr_target_listboxes()
+
+def add_dilate_target():
+    _move_roi_item(available_roi_listbox, 'dilate')
+def remove_dilate_target():
+    _move_roi_item(dilate_target_listbox, 'dilate')
+def add_erode_target():
+    _move_roi_item(available_roi_listbox, 'erode')
+def remove_erode_target():
+    _move_roi_item(erode_target_listbox, 'erode')
 
 # --- SIFT & OCR Processing Logic ---
 def pil_to_cv2_gray(pil_image):
@@ -741,12 +866,10 @@ def find_best_status_match(roi_crop_pil, tabname_match_key):
 def preprocess_for_ocr(pil_image, roi_key, scale_factor=None): # (MODIFIED) added roi_key
     """
     (MODIFIED) Uses GLOBAL variables from config for processing.
-    Pipeline: Upscale -> Gray -> CLAHE -> Denoise -> [CONDITIONAL MORPHOLOGY] -> OTSU THRESHOLD -> Invert -> Opening
-    
-    (FIXED) Swapped Dilate/Erode logic for Greyscale input:
-    - Dilate (Lightening) is used for thinning dark text (intended Erode effect).
-    - Erode (Darkening) is used for thickening dark text (intended Dilate effect).
+    (FIXED) Uses target lists for conditional morphology.
     """
+    global OCR_DILATE_TARGETS, OCR_ERODE_TARGETS, OCR_DILATE_KSIZE, OCR_ERODE_KSIZE # Use global targets
+
     try:
         cv_img = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
         
@@ -766,21 +889,21 @@ def preprocess_for_ocr(pil_image, roi_key, scale_factor=None): # (MODIFIED) adde
         # 4. Denoise (Uses global OCR_MEDIAN_KSIZE)
         denoised = cv2.medianBlur(contrast, OCR_MEDIAN_KSIZE) 
         
-        # --- (FIXED) CONDITIONAL MORPHOLOGY (Swapped logic for dark foreground) ---
+        # --- (FIXED) CONDITIONAL MORPHOLOGY (Use target lists and swapped logic for dark foreground) ---
         conditional_img = denoised.copy()
 
-        # 4.1. Thickening (Intended Dilate for "開度"): Use ERODE on grayscale
-        if "開度" in roi_key:
+        # 4.1. Thickening (Intended Dilate for "開度"): Use ERODE on grayscale if ROI is a DILATE target
+        if roi_key in OCR_DILATE_TARGETS:
             # Use kernel size from OCR_DILATE_KSIZE (intended for 'thickening')
             kernel_erode = np.ones((OCR_DILATE_KSIZE, OCR_DILATE_KSIZE), np.uint8) 
-            # Use ERODE operation
+            # Use ERODE operation (thickens dark text)
             conditional_img = cv2.erode(conditional_img, kernel_erode, iterations=1) 
 
-        # 4.2. Thinning (Intended Erode for "燃焼炉_温度_℃"): Use DILATE on grayscale
-        elif "燃焼炉_温度_℃" == roi_key:
+        # 4.2. Thinning (Intended Erode for "燃焼炉_温度_℃"): Use DILATE on grayscale if ROI is an ERODE target
+        elif roi_key in OCR_ERODE_TARGETS:
             # Use kernel size from OCR_ERODE_KSIZE (intended for 'thinning')
             kernel_dilate = np.ones((OCR_ERODE_KSIZE, OCR_ERODE_KSIZE), np.uint8) 
-            # Use DILATE operation
+            # Use DILATE operation (thins dark text)
             conditional_img = cv2.dilate(conditional_img, kernel_dilate, iterations=1)
         
         # --- END CONDITIONAL MORPHOLOGY ---
@@ -796,11 +919,10 @@ def preprocess_for_ocr(pil_image, roi_key, scale_factor=None): # (MODIFIED) adde
         final_cleaned = cv2.morphologyEx(bw_img_inverted, cv2.MORPH_OPEN, kernel_opening, iterations=1)
 
         # Return dict for debug tab
-        # We replace the CLAHE contrast image with the conditional_img for Slot 3 in the debug tab
         return {
             'raw_pil': pil_image,
             'gray': gray,
-            'contrast': conditional_img, # (MODIFIED) Now holds the image after conditional morphology
+            'contrast': conditional_img, # Now holds the image after conditional morphology
             'final': final_cleaned 
         }
     except Exception as e:
@@ -1895,7 +2017,7 @@ def on_closing():
 
 # ---- 1. สร้างหน้าต่างหลัก และ Style ----
 root = tk.Tk()
-root.geometry("850x650")
+root.geometry("1000x850") # (MODIFIED) Make window larger for new settings UI
 root.resizable(True, True) 
 font_family = "Segoe UI" if sys.platform == "win32" else "Arial"
 style = ttk.Style()
@@ -1913,6 +2035,7 @@ style.configure('Bold.TLabel', font=(font_family, 11, 'bold'))
 style.configure('Data.TLabel', font=(font_family, 9))
 style.configure('Status.TLabel', font=(font_family, 10, 'bold'))
 style.configure('Help.TLabel', font=(font_family, 9), foreground='#555555') # (NEW)
+style.configure('TListbox', font=(font_family, 10))
 
 # ---- 2. สร้าง Notebook (Tabbed Interface) ----
 notebook = ttk.Notebook(root, padding=10)
@@ -2089,7 +2212,7 @@ status_threshold_entry.pack(anchor=tk.W, pady=(5, 10))
 
 ttk.Separator(settings_tab, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=10)
 
-# --- (NEW) OCR Settings Frame ---
+# --- (MODIFIED) OCR Settings Frame (Part 1: Basic) ---
 ocr_settings_frame = ttk.Frame(settings_tab)
 ocr_settings_frame.pack(fill=tk.X, pady=10)
 ocr_settings_header = ttk.Label(ocr_settings_frame, style='Bold.TLabel')
@@ -2127,7 +2250,11 @@ ocr_opening_entry.pack(anchor=tk.W, pady=2)
 ocr_opening_help = ttk.Label(ocr_settings_frame, style='Help.TLabel', anchor=tk.W)
 ocr_opening_help.pack(fill=tk.X, pady=(0, 10))
 
-# (NEW) 5. Dilate
+# --- (NEW) OCR Settings Frame (Part 2: Kernel Sizes) ---
+ocr_kernel_settings_header = ttk.Label(ocr_settings_frame, style='Bold.TLabel')
+ocr_kernel_settings_header.pack(anchor=tk.W, pady=(10, 5))
+
+# 1. Dilate/Thicken Kernel Size
 ocr_dilate_label = ttk.Label(ocr_settings_frame, anchor=tk.W)
 ocr_dilate_label.pack(fill=tk.X)
 ocr_dilate_entry = EntryWithRightClickMenu(ocr_settings_frame, width=10)
@@ -2135,13 +2262,69 @@ ocr_dilate_entry.pack(anchor=tk.W, pady=2)
 ocr_dilate_help = ttk.Label(ocr_settings_frame, style='Help.TLabel', anchor=tk.W)
 ocr_dilate_help.pack(fill=tk.X, pady=(0, 10))
 
-# (NEW) 6. Erode
+# 2. Erode/Thin Kernel Size
 ocr_erode_label = ttk.Label(ocr_settings_frame, anchor=tk.W)
 ocr_erode_label.pack(fill=tk.X)
 ocr_erode_entry = EntryWithRightClickMenu(ocr_settings_frame, width=10)
 ocr_erode_entry.pack(anchor=tk.W, pady=2)
 ocr_erode_help = ttk.Label(ocr_settings_frame, style='Help.TLabel', anchor=tk.W)
 ocr_erode_help.pack(fill=tk.X, pady=(0, 10))
+
+
+ttk.Separator(settings_tab, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=10)
+
+# --- (NEW) OCR Settings Frame (Part 3: Target Selection) ---
+ocr_targets_header = ttk.Label(settings_tab, style='Bold.TLabel')
+ocr_targets_header.pack(anchor=tk.W, pady=(0, 10))
+
+target_selection_frame = ttk.Frame(settings_tab)
+target_selection_frame.pack(fill=tk.X)
+
+# A. Available ROIs List
+available_roi_frame = ttk.Frame(target_selection_frame)
+available_roi_frame.pack(side=tk.LEFT, padx=5, fill=tk.BOTH, expand=True)
+available_roi_label = ttk.Label(available_roi_frame)
+available_roi_label.pack(fill=tk.X, pady=5)
+available_roi_listbox = tk.Listbox(available_roi_frame, selectmode=tk.EXTENDED, height=15)
+available_roi_listbox.pack(fill=tk.BOTH, expand=True)
+
+# B. Control Buttons
+control_button_frame = ttk.Frame(target_selection_frame, width=150)
+control_button_frame.pack(side=tk.LEFT, padx=10, fill=tk.Y)
+control_button_frame.pack_propagate(False)
+
+ttk.Label(control_button_frame, text="").pack(pady=10) # Spacer
+add_dilate_button = ttk.Button(control_button_frame, command=add_dilate_target)
+add_dilate_button.pack(fill=tk.X, pady=5)
+remove_dilate_button = ttk.Button(control_button_frame, command=remove_dilate_target)
+remove_dilate_button.pack(fill=tk.X, pady=5)
+
+ttk.Label(control_button_frame, text="").pack(pady=10) # Spacer
+add_erode_button = ttk.Button(control_button_frame, command=add_erode_target)
+add_erode_button.pack(fill=tk.X, pady=5)
+remove_erode_button = ttk.Button(control_button_frame, command=remove_erode_target)
+remove_erode_button.pack(fill=tk.X, pady=5)
+
+ttk.Label(control_button_frame, text="").pack(pady=10) # Spacer
+refresh_targets_button = ttk.Button(control_button_frame, command=refresh_ocr_target_listboxes)
+refresh_targets_button.pack(fill=tk.X, pady=5)
+
+# C. Target Lists (Dilate and Erode)
+target_list_frame = ttk.Frame(target_selection_frame)
+target_list_frame.pack(side=tk.LEFT, padx=5, fill=tk.BOTH, expand=True)
+
+# Dilate Targets
+dilate_targets_label = ttk.Label(target_list_frame)
+dilate_targets_label.pack(fill=tk.X, pady=5)
+dilate_target_listbox = tk.Listbox(target_list_frame, selectmode=tk.EXTENDED, height=7)
+dilate_target_listbox.pack(fill=tk.X, pady=(0, 5))
+
+# Erode Targets
+erode_targets_label = ttk.Label(target_list_frame)
+erode_targets_label.pack(fill=tk.X, pady=5)
+erode_target_listbox = tk.Listbox(target_list_frame, selectmode=tk.EXTENDED, height=7)
+erode_target_listbox.pack(fill=tk.X)
+
 
 ttk.Separator(settings_tab, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=10)
 
@@ -2159,11 +2342,11 @@ g_sheet_save_button = ttk.Button(settings_tab, command=save_config)
 g_sheet_save_button.pack(anchor=tk.W)
 
 
-# ---- 8. สร้าง Tab 6: OCR Debug (MODIFIED for 2x2 grid + Scroller) ----
-ocr_debug_tab_scroller = ScrollableFrame(notebook) # (MODIFIED) ใช้ ScrollableFrame
-ocr_debug_tab = ocr_debug_tab_scroller.interior # (NEW)
-ocr_debug_tab.config(padding=10) # (NEW)
-notebook.add(ocr_debug_tab_scroller, text="OCR Debug") # (MODIFIED)
+# ---- 8. สร้าง Tab 6: OCR Debug ----
+ocr_debug_tab_scroller = ScrollableFrame(notebook) 
+ocr_debug_tab = ocr_debug_tab_scroller.interior 
+ocr_debug_tab.config(padding=10) 
+notebook.add(ocr_debug_tab_scroller, text="OCR Debug") 
 
 ocr_controls_frame = ttk.Frame(ocr_debug_tab)
 ocr_controls_frame.pack(fill=tk.X, pady=5)
