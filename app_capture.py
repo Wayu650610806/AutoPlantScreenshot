@@ -188,14 +188,19 @@ translations = {
     'ocr_median_help': {'en': 'Smooths noise. MUST be an ODD number > 1 (3, 5, 7).', 'ja': 'ノイズを平滑化。1より大きい奇数 (3, 5, 7) である必要があります。'},
     'ocr_opening_label': {'en': '4. Opening Kernel ksize (e.g., 2):', 'ja': '4. オープニングカーネル ksize (例: 2):'},
     'ocr_opening_help': {'en': 'Removes small white dots. Higher = removes more (e.g., 3).', 'ja': '小さい白い点を除去。大きい = より多く除去 (例: 3)。'},
-
+    # (NEW) OCR Settings Labels
+    'ocr_dilate_label': {'en': '5. Dilate Kernel ksize (e.g., 2):', 'ja': '5. 膨張カーネル ksize (例: 2):'},
+    'ocr_dilate_help': {'en': 'Expands white spots. Used for "%" (開度). Must be > 0.', 'ja': '白い点を拡大。パーセント(開度)に使用。0より大きい必要があります。'},
+    'ocr_erode_label': {'en': '6. Erode Kernel ksize (e.g., 2):', 'ja': '6. 収縮カーネル ksize (例: 2):'},
+    'ocr_erode_help': {'en': 'Shrinks white spots. Used for "℃" (温度). Must be > 0.', 'ja': '白い点を収縮。温度(℃)に使用。0より大きい必要があります。'},
+    
     # OCR Debug Tab (MODIFIED for 2x2 grid)
     'ocr_refresh_button': {'en': 'Load Latest Capture Data', 'ja': '最新のキャプチャを読込'},
     'ocr_split_label': {'en': 'Select Captured Split:', 'ja': 'キャプチャ分割を選択:'},
     'ocr_roi_label': {'en': 'Select ROI to Inspect:', 'ja': '検査するROIを選択:'},
     'ocr_raw_label': {'en': 'Raw ROI', 'ja': '生ROI'},
     'ocr_gray_label': {'en': 'Grayscale', 'ja': 'グレースケール'},
-    'ocr_contrast_label': {'en': 'Contrast (CLAHE)', 'ja': 'コントラスト (CLAHE)'}, # (แก้ไข)
+    'ocr_contrast_label': {'en': 'Conditional Processing', 'ja': '条件付き前処理'}, # (MODIFIED)
     'ocr_final_label': {'en': 'Final (Threshold)', 'ja': '最終 (しきい値処理)'},
     'ocr_result_label': {'en': 'OCR Result:', 'ja': 'OCR結果:'},
     'ocr_no_data': {'en': 'No data. Run Auto-Capture first.', 'ja': 'データなし。自動キャプチャを実行してください。'},
@@ -228,7 +233,7 @@ translations = {
     
     # (NEW) Error messages
     'error_ocr_settings': {'en': 'Invalid OCR Settings', 'ja': '無効なOCR設定'},
-    'error_ocr_text': {'en': 'All OCR values must be numbers.\nMedian ksize must be an ODD integer > 1.\nAll other values must be > 0.', 'ja': 'OCR値はすべて数値である必要があります。\nメディアン ksize は1より大きい奇数である必要があります。\n他のすべての値は0より大きい必要があります。'},
+    'error_ocr_text': {'en': 'All OCR values must be numbers.\nMedian ksize must be an ODD integer > 1.\nAll other values (Scale, CLAHE, Opening, Dilate, Erode) must be > 0.', 'ja': 'OCR値はすべて数値である必要があります。\nメディアン ksize は1より大きい奇数である必要があります。\n他のすべての値 (スケール, CLAHE, オープニング, 膨張, 収縮) は0より大きい必要があります。'},
     
     'confirm_close_title': {'en': 'Confirm Exit', 'ja': '終了確認'},
     'confirm_close_message': {'en': 'Auto-Capture is running. Are you sure you want to stop and exit?', 'ja': '自動キャプチャが実行中です。停止して終了しますか？'},
@@ -297,10 +302,14 @@ OCR_SCALE_FACTOR = 4
 OCR_CLAHE_CLIP = 2.0
 OCR_MEDIAN_KSIZE = 3
 OCR_OPENING_KSIZE = 2
+OCR_DILATE_KSIZE = 2  # (NEW)
+OCR_ERODE_KSIZE = 2   # (NEW)
 ocr_scale_entry = None
 ocr_clahe_entry = None
 ocr_median_entry = None
 ocr_opening_entry = None
+ocr_dilate_entry = None # (NEW)
+ocr_erode_entry = None  # (NEW)
 
 # --- Custom Entry with Right-Click ---
 class EntryWithRightClickMenu(ttk.Entry):
@@ -390,7 +399,8 @@ class HorizontalScrolledFrame(ttk.Frame):
 def load_config():
     """(MODIFIED) Loads all settings from config.json."""
     global g_sheet_url, TABNAME_SIFT_THRESHOLD, STATUS_SIFT_THRESHOLD, \
-           OCR_SCALE_FACTOR, OCR_CLAHE_CLIP, OCR_MEDIAN_KSIZE, OCR_OPENING_KSIZE
+           OCR_SCALE_FACTOR, OCR_CLAHE_CLIP, OCR_MEDIAN_KSIZE, OCR_OPENING_KSIZE, \
+           OCR_DILATE_KSIZE, OCR_ERODE_KSIZE # (NEW)
     try:
         if os.path.exists(CONFIG_FILE_PATH):
             with open(CONFIG_FILE_PATH, 'r', encoding='utf-8') as f:
@@ -417,6 +427,10 @@ def load_config():
                 OCR_MEDIAN_KSIZE = int(data.get("ocr_median_ksize", 3))
                 OCR_OPENING_KSIZE = int(data.get("ocr_opening_ksize", 2))
                 
+                # (NEW) Conditional Morphology Settings
+                OCR_DILATE_KSIZE = int(data.get("ocr_dilate_ksize", 2))
+                OCR_ERODE_KSIZE = int(data.get("ocr_erode_ksize", 2))
+                
                 if ocr_scale_entry:
                     ocr_scale_entry.delete(0, tk.END)
                     ocr_scale_entry.insert(0, str(OCR_SCALE_FACTOR))
@@ -429,15 +443,24 @@ def load_config():
                 if ocr_opening_entry:
                     ocr_opening_entry.delete(0, tk.END)
                     ocr_opening_entry.insert(0, str(OCR_OPENING_KSIZE))
+                if ocr_dilate_entry:
+                    ocr_dilate_entry.delete(0, tk.END)
+                    ocr_dilate_entry.insert(0, str(OCR_DILATE_KSIZE))
+                if ocr_erode_entry:
+                    ocr_erode_entry.delete(0, tk.END)
+                    ocr_erode_entry.insert(0, str(OCR_ERODE_KSIZE))
 
         else:
             # (NEW) Load defaults into UI if no config file
             if tabname_threshold_entry: tabname_threshold_entry.insert(0, "70")
             if status_threshold_entry: status_threshold_entry.insert(0, "15")
+            if g_sheet_url_entry: g_sheet_url_entry.insert(0, "")
             if ocr_scale_entry: ocr_scale_entry.insert(0, "4")
             if ocr_clahe_entry: ocr_clahe_entry.insert(0, "2.0")
             if ocr_median_entry: ocr_median_entry.insert(0, "3")
             if ocr_opening_entry: ocr_opening_entry.insert(0, "2")
+            if ocr_dilate_entry: ocr_dilate_entry.insert(0, "2")
+            if ocr_erode_entry: ocr_erode_entry.insert(0, "2")
             
     except Exception as e:
         print(f"Error loading config: {e}")
@@ -449,11 +472,14 @@ def load_config():
         OCR_CLAHE_CLIP = 2.0
         OCR_MEDIAN_KSIZE = 3
         OCR_OPENING_KSIZE = 2
+        OCR_DILATE_KSIZE = 2 # (NEW)
+        OCR_ERODE_KSIZE = 2  # (NEW)
 
 def save_config():
     """(MODIFIED) Saves all settings to config.json with validation."""
     global g_sheet_url, TABNAME_SIFT_THRESHOLD, STATUS_SIFT_THRESHOLD, \
-           OCR_SCALE_FACTOR, OCR_CLAHE_CLIP, OCR_MEDIAN_KSIZE, OCR_OPENING_KSIZE
+           OCR_SCALE_FACTOR, OCR_CLAHE_CLIP, OCR_MEDIAN_KSIZE, OCR_OPENING_KSIZE, \
+           OCR_DILATE_KSIZE, OCR_ERODE_KSIZE # (NEW)
     try:
         # 1. Validate SIFT thresholds
         try:
@@ -470,11 +496,18 @@ def save_config():
             new_median = int(ocr_median_entry.get())
             new_opening = int(ocr_opening_entry.get())
             
+            # (NEW) Conditional Morphology validation
+            new_dilate = int(ocr_dilate_entry.get())
+            new_erode = int(ocr_erode_entry.get())
+            
             # Validation rules
             if new_median % 2 == 0 or new_median < 3:
                 raise ValueError("Median ksize must be an odd integer > 1")
             if new_scale <= 0 or new_clahe <= 0 or new_opening <= 0:
                  raise ValueError("Values must be > 0")
+            # (NEW) Dilate/Erode must be > 0
+            if new_dilate <= 0 or new_erode <= 0:
+                 raise ValueError("Dilate/Erode ksizes must be > 0")
                  
         except ValueError as e:
             print(f"OCR Setting Validation Error: {e}")
@@ -488,6 +521,11 @@ def save_config():
         OCR_CLAHE_CLIP = new_clahe
         OCR_MEDIAN_KSIZE = new_median
         OCR_OPENING_KSIZE = new_opening
+        
+        # (NEW) Conditional Morphology updates
+        OCR_DILATE_KSIZE = new_dilate
+        OCR_ERODE_KSIZE = new_erode
+
         g_sheet_url = g_sheet_url_entry.get()
         
         # 4. Create data dict
@@ -498,7 +536,9 @@ def save_config():
             "ocr_scale_factor": OCR_SCALE_FACTOR,
             "ocr_clahe_clip": OCR_CLAHE_CLIP,
             "ocr_median_ksize": OCR_MEDIAN_KSIZE,
-            "ocr_opening_ksize": OCR_OPENING_KSIZE
+            "ocr_opening_ksize": OCR_OPENING_KSIZE,
+            "ocr_dilate_ksize": OCR_DILATE_KSIZE, # (NEW)
+            "ocr_erode_ksize": OCR_ERODE_KSIZE    # (NEW)
         }
         
         # 5. Save to file
@@ -544,7 +584,7 @@ def set_language(lang_code):
     gallery_rename_button.config(text=translations['gallery_rename_button'][current_lang])
     gallery_delete_button.config(text=translations['gallery_delete_button'][current_lang])
     if not gallery_image_list.selection():
-        gallery_preview_label.config(text=translations['gallery_placeholder'][current_lang], image='')
+        gallery_preview_label.config(image='', text=translations['gallery_placeholder'][current_lang])
         
     # ROI Set Tab
     roi_set_list.heading("#0", text=translations['roi_set_list_header'][current_lang])
@@ -580,6 +620,10 @@ def set_language(lang_code):
     ocr_median_help.config(text=translations['ocr_median_help'][current_lang])
     ocr_opening_label.config(text=translations['ocr_opening_label'][current_lang])
     ocr_opening_help.config(text=translations['ocr_opening_help'][current_lang])
+    ocr_dilate_label.config(text=translations['ocr_dilate_label'][current_lang])
+    ocr_dilate_help.config(text=translations['ocr_dilate_help'][current_lang])
+    ocr_erode_label.config(text=translations['ocr_erode_label'][current_lang])
+    ocr_erode_help.config(text=translations['ocr_erode_help'][current_lang])
     
     # OCR Debug Tab (MODIFIED for 2x2 grid)
     ocr_refresh_btn.config(text=translations['ocr_refresh_button'][current_lang])
@@ -587,7 +631,7 @@ def set_language(lang_code):
     ocr_roi_label.config(text=translations['ocr_roi_label'][current_lang])
     ocr_raw_frame_label.config(text=translations['ocr_raw_label'][current_lang])
     ocr_gray_frame_label.config(text=translations['ocr_gray_label'][current_lang]) 
-    ocr_contrast_frame_label.config(text=translations['ocr_contrast_label'][current_lang]) 
+    ocr_contrast_frame_label.config(text=translations['ocr_contrast_label'][current_lang]) # (MODIFIED) 
     ocr_final_frame_label.config(text=translations['ocr_final_label'][current_lang]) 
     ocr_result_text_label.config(text=translations['ocr_result_label'][current_lang])
     
@@ -694,10 +738,14 @@ def find_best_status_match(roi_crop_pil, tabname_match_key):
     return _find_best_sift_match(roi_crop_pil, status_cache_for_this_tab, STATUS_SIFT_THRESHOLD)
 
 # --- (MODIFIED) - ใช้ Global Variables จาก Config ---
-def preprocess_for_ocr(pil_image, scale_factor=None): # (scale_factor is now ignored)
+def preprocess_for_ocr(pil_image, roi_key, scale_factor=None): # (MODIFIED) added roi_key
     """
     (MODIFIED) Uses GLOBAL variables from config for processing.
-    Pipeline: Upscale -> Gray -> CLAHE -> Denoise -> OTSU THRESHOLD -> Invert -> Opening
+    Pipeline: Upscale -> Gray -> CLAHE -> Denoise -> [CONDITIONAL MORPHOLOGY] -> OTSU THRESHOLD -> Invert -> Opening
+    
+    (FIXED) Swapped Dilate/Erode logic for Greyscale input:
+    - Dilate (Lightening) is used for thinning dark text (intended Erode effect).
+    - Erode (Darkening) is used for thickening dark text (intended Dilate effect).
     """
     try:
         cv_img = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
@@ -718,21 +766,41 @@ def preprocess_for_ocr(pil_image, scale_factor=None): # (scale_factor is now ign
         # 4. Denoise (Uses global OCR_MEDIAN_KSIZE)
         denoised = cv2.medianBlur(contrast, OCR_MEDIAN_KSIZE) 
         
-        # 5. Global Thresholding (Otsu's Binarization)
-        _ , bw_img = cv2.threshold(denoised, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        # --- (FIXED) CONDITIONAL MORPHOLOGY (Swapped logic for dark foreground) ---
+        conditional_img = denoised.copy()
+
+        # 4.1. Thickening (Intended Dilate for "開度"): Use ERODE on grayscale
+        if "開度" in roi_key:
+            # Use kernel size from OCR_DILATE_KSIZE (intended for 'thickening')
+            kernel_erode = np.ones((OCR_DILATE_KSIZE, OCR_DILATE_KSIZE), np.uint8) 
+            # Use ERODE operation
+            conditional_img = cv2.erode(conditional_img, kernel_erode, iterations=1) 
+
+        # 4.2. Thinning (Intended Erode for "燃焼炉_温度_℃"): Use DILATE on grayscale
+        elif "燃焼炉_温度_℃" == roi_key:
+            # Use kernel size from OCR_ERODE_KSIZE (intended for 'thinning')
+            kernel_dilate = np.ones((OCR_ERODE_KSIZE, OCR_ERODE_KSIZE), np.uint8) 
+            # Use DILATE operation
+            conditional_img = cv2.dilate(conditional_img, kernel_dilate, iterations=1)
+        
+        # --- END CONDITIONAL MORPHOLOGY ---
+        
+        # 5. Global Thresholding (Otsu's Binarization) - Applied to the conditional_img
+        _ , bw_img = cv2.threshold(conditional_img, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
         
         # 6. Invert
         bw_img_inverted = cv2.bitwise_not(bw_img)
         
         # 7. Post-Process Cleaning (Uses global OCR_OPENING_KSIZE)
-        kernel = np.ones((OCR_OPENING_KSIZE, OCR_OPENING_KSIZE), np.uint8) 
-        final_cleaned = cv2.morphologyEx(bw_img_inverted, cv2.MORPH_OPEN, kernel, iterations=1)
+        kernel_opening = np.ones((OCR_OPENING_KSIZE, OCR_OPENING_KSIZE), np.uint8) 
+        final_cleaned = cv2.morphologyEx(bw_img_inverted, cv2.MORPH_OPEN, kernel_opening, iterations=1)
 
         # Return dict for debug tab
+        # We replace the CLAHE contrast image with the conditional_img for Slot 3 in the debug tab
         return {
             'raw_pil': pil_image,
             'gray': gray,
-            'contrast': contrast, 
+            'contrast': conditional_img, # (MODIFIED) Now holds the image after conditional morphology
             'final': final_cleaned 
         }
     except Exception as e:
@@ -957,8 +1025,8 @@ def extract_data_from_rois(pil_image, tabname_match, crop_offset):
                 status_match = find_best_status_match(roi_crop_pil, tabname_match)
                 data_results[roi_key] = status_match.replace(".png", "")
             else:
-                # (MODIFIED) เปลี่ยนมาเรียกใช้ฟังก์ชันใหม่ที่คืนค่าเป็น dict
-                processing_steps = preprocess_for_ocr(roi_crop_pil)
+                # (MODIFIED) Pass roi_key to preprocess_for_ocr
+                processing_steps = preprocess_for_ocr(roi_crop_pil, roi_key) 
                 if processing_steps is None:
                     data_results[roi_key] = "N/A"
                     continue
@@ -1021,7 +1089,8 @@ def update_gui_with_sift_results(sift_results):
         # 3. Right frame for Data
         data_frame = ttk.Frame(result_frame, width=250)
         data_frame.pack(side=tk.LEFT, fill=tk.Y, pady=5, ipadx=10)
-        data_frame.pack_propagate(False)
+        # ลบ data_frame.pack_propagate(False) ทิ้งไปเลย
+        # เพื่อให้ Frame ขยายความสูงตามข้อความได้อิสระ
 
         # --- Populate Image Frame ---
         display_image = pil_image.copy()
@@ -1755,7 +1824,8 @@ def on_ocr_roi_select(event):
         roi_box_pil = (local_x, local_y, local_x + global_w, local_y + global_h)
         
         # --- (NEW) Call the preprocessing function ---
-        processing_steps = preprocess_for_ocr(split_pil_image.crop(roi_box_pil))
+        # (MODIFIED) Pass roi_key to preprocess_for_ocr
+        processing_steps = preprocess_for_ocr(split_pil_image.crop(roi_box_pil), roi_key) 
         if processing_steps is None:
             raise ValueError("Preprocessing failed")
             
@@ -1884,8 +1954,8 @@ progress_label.pack(side=tk.LEFT, padx=(0, 5))
 progress_bar = ttk.Progressbar(progress_frame, orient=tk.HORIZONTAL, mode='determinate')
 progress_bar.pack(fill=tk.X, expand=True)
 
-# (MODIFIED) - ใช้ HorizontalScrolledFrame
-crop_display_frame_scroller = HorizontalScrolledFrame(capture_tab)
+# (MODIFIED) - ใช้ ScrollableFrame เพื่อให้เลื่อนดูข้อมูลแนวตั้งได้ด้วย
+crop_display_frame_scroller = ScrollableFrame(capture_tab)
 crop_display_frame_scroller.pack(fill=tk.BOTH, expand=True, pady=5)
 crop_display_frame = crop_display_frame_scroller.interior # นี่คือ frame จริงที่เราจะ pack รูปใส่
 
@@ -2057,6 +2127,22 @@ ocr_opening_entry.pack(anchor=tk.W, pady=2)
 ocr_opening_help = ttk.Label(ocr_settings_frame, style='Help.TLabel', anchor=tk.W)
 ocr_opening_help.pack(fill=tk.X, pady=(0, 10))
 
+# (NEW) 5. Dilate
+ocr_dilate_label = ttk.Label(ocr_settings_frame, anchor=tk.W)
+ocr_dilate_label.pack(fill=tk.X)
+ocr_dilate_entry = EntryWithRightClickMenu(ocr_settings_frame, width=10)
+ocr_dilate_entry.pack(anchor=tk.W, pady=2)
+ocr_dilate_help = ttk.Label(ocr_settings_frame, style='Help.TLabel', anchor=tk.W)
+ocr_dilate_help.pack(fill=tk.X, pady=(0, 10))
+
+# (NEW) 6. Erode
+ocr_erode_label = ttk.Label(ocr_settings_frame, anchor=tk.W)
+ocr_erode_label.pack(fill=tk.X)
+ocr_erode_entry = EntryWithRightClickMenu(ocr_settings_frame, width=10)
+ocr_erode_entry.pack(anchor=tk.W, pady=2)
+ocr_erode_help = ttk.Label(ocr_settings_frame, style='Help.TLabel', anchor=tk.W)
+ocr_erode_help.pack(fill=tk.X, pady=(0, 10))
+
 ttk.Separator(settings_tab, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=10)
 
 # --- Google Sheet Frame ---
@@ -2117,7 +2203,7 @@ ocr_bottom_row_frame.pack(fill=tk.BOTH, expand=True, pady=2)
 
 ocr_contrast_frame = ttk.Frame(ocr_bottom_row_frame, padding=5) 
 ocr_contrast_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=2) 
-ocr_contrast_frame_label = ttk.Label(ocr_contrast_frame, text="Contrast (CLAHE)", font=(font_family, 11, 'bold')) 
+ocr_contrast_frame_label = ttk.Label(ocr_contrast_frame, text="Conditional Processing", font=(font_family, 11, 'bold')) # (MODIFIED)
 ocr_contrast_frame_label.pack(pady=5) 
 ocr_contrast_image_label = tk.Label(ocr_contrast_frame, background="#ffffff", relief=tk.SUNKEN, borderwidth=1) 
 ocr_contrast_image_label.pack(fill=tk.BOTH, expand=True) 
